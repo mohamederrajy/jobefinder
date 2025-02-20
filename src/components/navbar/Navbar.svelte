@@ -11,7 +11,7 @@
 <nav>
   <div class="nav-content">
     <a href="/" class="logo">
-      <span class="logo-text">snagajob</span>
+      <span class="job">Job</span><span class="finder">Finder</span>
     </a>
     
     <div class="nav-right">
@@ -32,7 +32,7 @@
       <a href="/contact" class="menu-item">Contact us</a>
       <a href="/help" class="menu-item">Help Center</a>
       <div class="menu-divider"></div>
-      <a href="/create-account" class="create-account">Create an account</a>
+      <a href="/signup" class="create-account">Create an account</a>
       <a href="/login" class="login">Log in</a>
     </div>
   {/if}
@@ -62,7 +62,14 @@
     text-decoration: none;
   }
 
-  .logo-text {
+  .job {
+    color: #333;
+    font-size: 1.5rem;
+    font-weight: bold;
+    font-family: serif;
+  }
+
+  .finder {
     color: #6355FF;
     font-size: 1.5rem;
     font-weight: bold;
