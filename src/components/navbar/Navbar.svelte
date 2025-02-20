@@ -11,7 +11,11 @@
 <nav>
   <div class="nav-content">
     <a href="/" class="logo">
-      <span class="job">Job</span><span class="finder">Finder</span>
+      <div class="logo-container">
+        <span class="job">Job</span>
+        <span class="separator">|</span>
+        <span class="finder">Finder</span>
+      </div>
     </a>
     
     <div class="nav-right">
@@ -60,6 +64,14 @@
 
   .logo {
     text-decoration: none;
+    display: flex;
+    align-items: center;
+  }
+
+  .logo-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
   .job {
@@ -67,6 +79,12 @@
     font-size: 1.5rem;
     font-weight: bold;
     font-family: serif;
+  }
+
+  .separator {
+    color: #6355FF;
+    font-size: 1.5rem;
+    opacity: 0.7;
   }
 
   .finder {

@@ -2,11 +2,17 @@
   <div class="footer-container">
     <div class="footer-section main-section">
       <div class="logo">
-        <h3>
-          <span class="job">Job</span><span class="finder">Finder</span>
-        </h3>
-        <p>Find your next job opportunity</p>
+        <div class="logo-container">
+          <span class="job">Job</span>
+          <span class="separator">|</span>
+          <span class="finder">Finder</span>
+        </div>
+        <div class="tagline">
+          <p>Find your next job opportunity</p>
+          <p class="subtitle">Join millions of people finding their perfect job match</p>
+        </div>
       </div>
+
       <div class="social-links">
         <a href="https://linkedin.com/company/jobfinder" aria-label="LinkedIn">
           <svg viewBox="0 0 24 24" width="20" height="20">
@@ -93,18 +99,50 @@
   }
 
   .logo h3 {
-    font-family: serif;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
     font-size: 1.75rem;
-    font-weight: bold;
-    margin-bottom: 0.5rem;
+    font-weight: 800;
+    margin-bottom: 0.75rem;
+    letter-spacing: -0.5px;
+    display: flex;
+    align-items: baseline;
+  }
+
+  .logo-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .icon {
+    display: flex;
+    align-items: center;
+  }
+
+  .logo-text {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
   }
 
   .job {
     color: #333;
+    font-size: 1.5rem;
+    font-weight: bold;
+    font-family: serif;
+  }
+
+  .separator {
+    color: #6355FF;
+    font-size: 1.5rem;
+    opacity: 0.7;
   }
 
   .finder {
     color: #6355FF;
+    font-size: 1.5rem;
+    font-weight: bold;
+    font-family: serif;
   }
 
   .logo p {
@@ -196,6 +234,21 @@
   .copyright {
     color: #999;
     font-size: 0.85rem;
+  }
+
+  .tagline {
+    margin-top: 1rem;
+  }
+
+  .tagline p {
+    color: #666;
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .tagline .subtitle {
+    font-size: 0.95rem;
+    opacity: 0.8;
   }
 
   @media (max-width: 1024px) {

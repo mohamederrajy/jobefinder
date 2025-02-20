@@ -22,7 +22,11 @@
 
 <div class="signup-container">
   <a href="/" class="logo">
-    <span class="logo-text">snagajob</span>
+    <div class="logo-container">
+      <span class="job">Job</span>
+      <span class="separator">|</span>
+      <span class="finder">Finder</span>
+    </div>
   </a>
 
   <div class="signup-content">
@@ -83,13 +87,32 @@
   }
 
   .logo {
+    text-decoration: none;
     position: absolute;
     top: 2rem;
     left: 2rem;
-    text-decoration: none;
   }
 
-  .logo-text {
+  .logo-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .job {
+    color: #333;
+    font-size: 1.5rem;
+    font-weight: bold;
+    font-family: serif;
+  }
+
+  .separator {
+    color: #6355FF;
+    font-size: 1.5rem;
+    opacity: 0.7;
+  }
+
+  .finder {
     color: #6355FF;
     font-size: 1.5rem;
     font-weight: bold;
