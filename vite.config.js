@@ -6,6 +6,13 @@ export default defineConfig({
 	server: {
 		fs: {
 			allow: ['static']
+		},
+		proxy: {
+			'/api': {
+				target: 'http://localhost:5001',
+				changeOrigin: true,
+				secure: false,
+			}
 		}
 	}
 }); 

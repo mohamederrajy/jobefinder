@@ -1,27 +1,116 @@
-<script>
-  import { APP_NAME } from '$lib/config';
+<script lang="ts">
+  import { user } from '../../stores/userStore';
+  import { subscription } from '../../stores/subscriptionStore';
+  import { checkSubscription } from '../../lib/api/subscription';
+  import { goto } from '$app/navigation';
+  import { PUBLIC_API_URL } from '$env/static/public';
+  import { login } from '$lib/api';
+  
   let email = '';
   let password = '';
   let emailTouched = false;
+  let passwordTouched = false;
   let showPassword = false;
+  let error: string | null = null;
+  let loading = false;
+  let showError = false;
 
-  function handleSubmit() {
-    emailTouched = true;
-    if (email && password) {
-      console.log({ email, password });
+  function validateEmail(email: string): boolean {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }
+
+  function validatePassword(password: string): boolean {
+    return password.length >= 6;
+  }
+
+  async function handleLogin() {
+    try {
+      loading = true;
+      error = null;
+
+      const response = await fetch(`${PUBLIC_API_URL}/users/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Login failed');
+      }
+
+      // Store user data
+      user.login({
+        _id: data.user._id,
+        email: data.user.email,
+        role: data.user.role,
+        isPaid: false, // Will be updated after checking subscription
+        token: data.token
+      });
+
+      // Check subscription status
+      await checkSubscription(data.token);
+
+      // Redirect based on role
+      if (data.user.role === 'admin') {
+        goto('/admin');
+      } else {
+        goto('/dashboard');
+      }
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Login failed';
+    } finally {
+      loading = false;
     }
   }
 
   function handleEmailInput() {
     emailTouched = true;
+    if (email && !validateEmail(email)) {
+      error = 'Please enter a valid email address';
+    } else {
+      error = '';
+    }
+  }
+
+  function handlePasswordInput() {
+    passwordTouched = true;
+    if (password && !validatePassword(password)) {
+      error = 'Password must be at least 6 characters long';
+    } else {
+      error = '';
+    }
   }
 
   function togglePassword() {
     showPassword = !showPassword;
   }
+
+  function returnHome() {
+    goto('/');
+  }
 </script>
 
 <div class="signup-container">
+  {#if showError}
+    <div class="error-overlay">
+      <div class="error-content">
+        <svg viewBox="0 0 24 24" width="48" height="48">
+          <path fill="#dc3545" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+        </svg>
+        <h2>Oops! Something went wrong</h2>
+        <p>{error}</p>
+        <button class="return-button" on:click={returnHome}>
+          Return to JobFinder
+        </button>
+      </div>
+    </div>
+  {/if}
+
   <a href="/" class="logo">
     <div class="logo-container">
       <span class="job">Job</span>
@@ -64,17 +153,30 @@
     </div>
 
     <div class="right-section">
-      <form on:submit|preventDefault={handleSubmit}>
+      {#if error}
+        <div class="error-banner" role="alert">
+          <svg viewBox="0 0 24 24" width="20" height="20">
+            <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+          </svg>
+          <span>{error}</span>
+        </div>
+      {/if}
+
+      <form on:submit|preventDefault={handleLogin} novalidate>
         <div class="form-group">
           <input 
             type="email" 
             placeholder="Email address"
             bind:value={email}
             on:blur={handleEmailInput}
+            on:input={handleEmailInput}
+            disabled={loading}
+            class={emailTouched && !validateEmail(email) ? 'invalid' : ''}
             required
+            aria-invalid={emailTouched && !validateEmail(email)}
           />
           {#if emailTouched && !email}
-            <div class="error-message">
+            <div class="error-message" role="alert">
               <svg viewBox="0 0 24 24" width="16" height="16">
                 <path fill="#dc3545" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
               </svg>
@@ -89,19 +191,26 @@
               type={showPassword ? "text" : "password"}
               placeholder="Password"
               bind:value={password}
+              on:blur={handlePasswordInput}
+              on:input={handlePasswordInput}
+              disabled={loading}
+              class={passwordTouched && !validatePassword(password) ? 'invalid' : ''}
               required
+              aria-invalid={passwordTouched && !validatePassword(password)}
             />
             <button 
               type="button" 
               class="toggle-password"
               on:click={togglePassword}
+              disabled={loading}
+              aria-label={showPassword ? "Hide password" : "Show password"}
             >
               {#if showPassword}
-                <svg viewBox="0 0 24 24" width="24" height="24">
+                <svg viewBox="0 0 24 24" width="22" height="22">
                   <path fill="currentColor" d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
                 </svg>
               {:else}
-                <svg viewBox="0 0 24 24" width="24" height="24">
+                <svg viewBox="0 0 24 24" width="22" height="22">
                   <path fill="currentColor" d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
                 </svg>
               {/if}
@@ -109,30 +218,19 @@
           </div>
         </div>
 
-        <button type="submit" class="continue-button">
-          Log in
-        </button>
-
-        <div class="social-divider">
-          <span>or use a social account</span>
-        </div>
-
-        <button type="button" class="social-login-button">
-          <svg width="18" height="18" viewBox="0 0 18 18">
-            <path fill="#4285F4" d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
-            <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
-            <path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/>
-            <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
-          </svg>
-          <span>Continue with Google</span>
+        <button type="submit" class="continue-button" disabled={loading}>
+          {loading ? 'Logging in...' : 'Log in'}
         </button>
 
         <div class="forgot-password">
           <a href="/forgot-password">Forgot password?</a>
         </div>
 
-        <div class="signup-prompt">
-          Don't have an account? <a href="/signup">Sign up</a>
+        <div class="create-account">
+          <p>Don't have an account?</p>
+          <a href="/signup" class="create-account-button">
+            Create Account
+          </a>
         </div>
       </form>
     </div>
@@ -273,87 +371,9 @@
     margin-bottom: 2rem;
   }
 
-  .social-divider {
-    text-align: center;
-    position: relative;
-    margin: 2rem 0;
-    color: #666;
-    font-size: 0.9rem;
-  }
-
-  .social-divider::before,
-  .social-divider::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    width: 45%;
-    height: 1px;
-    background: #e0e0e0;
-  }
-
-  .social-divider::before {
-    left: 0;
-  }
-
-  .social-divider::after {
-    right: 0;
-  }
-
-  .social-login-button {
-    width: 100%;
-    padding: 0.875rem;
-    background: white;
-    border: 1px solid #e0e0e0;
-    border-radius: 50px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    font-size: 1rem;
-    color: #333;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    margin-bottom: 2rem;
-    font-weight: 500;
-  }
-
-  .social-login-button:hover {
-    background: #f8f9fa;
-    border-color: #d0d0d0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-  }
-
-  .social-login-button svg {
-    flex-shrink: 0;
-  }
-
-  .password-input {
-    position: relative;
-    margin-bottom: 0.5rem;
-  }
-
-  .toggle-password {
-    position: absolute;
-    right: 1rem;
-    top: 50%;
-    transform: translateY(-50%);
-    background: none;
-    border: none;
-    color: #666;
-    cursor: pointer;
-    padding: 0.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .toggle-password:hover {
-    color: #333;
-  }
-
   .forgot-password {
     text-align: center;
-    margin-bottom: 1.5rem;
+    margin: 1rem 0;
   }
 
   .forgot-password a {
@@ -362,16 +382,41 @@
     font-size: 0.9rem;
   }
 
-  .signup-prompt {
-    text-align: center;
-    color: #333;
-    font-size: 0.9rem;
+  .forgot-password a:hover {
+    text-decoration: underline;
   }
 
-  .signup-prompt a {
+  .create-account {
+    text-align: center;
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid #e0e0e0;
+  }
+
+  .create-account p {
+    color: #666;
+    margin-bottom: 1rem;
+    font-size: 0.95rem;
+  }
+
+  .create-account-button {
+    display: inline-block;
+    padding: 0.75rem 2rem;
+    background: white;
+    border: 2px solid #6355FF;
     color: #6355FF;
-    text-decoration: none;
+    border-radius: 50px;
+    font-size: 1rem;
     font-weight: 500;
+    text-decoration: none;
+    transition: all 0.2s ease;
+  }
+
+  .create-account-button:hover {
+    background: #6355FF;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99, 85, 255, 0.2);
   }
 
   @media (max-width: 1200px) {
@@ -412,5 +457,118 @@
       justify-content: center;
       gap: 2rem;
     }
+  }
+
+  .error-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .error-content {
+    text-align: center;
+    padding: 2rem;
+    max-width: 400px;
+  }
+
+  .error-content h2 {
+    color: #dc3545;
+    font-size: 1.5rem;
+    margin: 1rem 0;
+  }
+
+  .error-content p {
+    color: #666;
+    margin-bottom: 1.5rem;
+  }
+
+  .return-button {
+    background: #6355FF;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 50px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .return-button:hover {
+    background: #5346E0;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99, 85, 255, 0.2);
+  }
+
+  .invalid {
+    border-color: #dc3545;
+    background-color: #fff8f8;
+  }
+
+  .invalid:focus {
+    border-color: #dc3545;
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1);
+  }
+
+  .error-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #fff2f2;
+    color: #dc3545;
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 1.5rem;
+    border: 1px solid #ffcdd2;
+  }
+
+  .password-input {
+    position: relative;
+  }
+
+  .toggle-password {
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    padding: 0.5rem;
+    cursor: pointer;
+    color: #666;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    border-radius: 50%;
+  }
+
+  .toggle-password:hover {
+    color: #333;
+    background: rgba(0, 0, 0, 0.05);
+  }
+
+  .toggle-password:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(99, 85, 255, 0.2);
+  }
+
+  .toggle-password:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .password-input input {
+    padding-right: 3rem;
+  }
+
+  .password-input input:focus + .toggle-password {
+    color: #6355FF;
   }
 </style> 

@@ -1,23 +1,137 @@
-<script>
+<script lang="ts">
+  import { goto } from '$app/navigation';
+  import { PUBLIC_API_URL } from '$env/static/public';
+  import { signup } from '$lib/api';
   import { APP_NAME } from '$lib/config';
+  
   let email = '';
   let zipCode = '';
   let password = '';
   let emailTouched = false;
+  let zipCodeTouched = false;
+  let passwordTouched = false;
   let showPassword = false;
   let showNextStep = false;
+  let error = '';
+  let loading = false;
+  let emailConsent = true;
 
-  function handleSubmit() {
-    emailTouched = true;
-    if (email && !showNextStep) {
-      showNextStep = true;
-      return;
-    }
-    console.log({ email, zipCode, password });
+  function validateEmail(email: string): boolean {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }
+
+  function validatePassword(password: string): boolean {
+    const hasMinLength = password.length >= 8;
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumber = /[0-9]/.test(password);
+    return hasMinLength && hasUpperCase && hasLowerCase && hasNumber;
+  }
+
+  function validateZipCode(zipCode: string): boolean {
+    const zipRegex = /^\d{5}(-\d{4})?$/;
+    return zipRegex.test(zipCode);
+  }
+
+  function getPasswordStrength(password: string): string {
+    if (!password) return 'weak';
+    const score = [
+      password.length >= 8,
+      /[A-Z]/.test(password),
+      /[a-z]/.test(password),
+      /[0-9]/.test(password),
+      /[^A-Za-z0-9]/.test(password)
+    ].filter(Boolean).length;
+    
+    if (score <= 2) return 'weak';
+    if (score <= 3) return 'medium';
+    return 'strong';
   }
 
   function handleEmailInput() {
     emailTouched = true;
+    validateForm();
+  }
+
+  function handlePasswordInput() {
+    passwordTouched = true;
+    validateForm();
+  }
+
+  function handleZipCodeInput() {
+    zipCodeTouched = true;
+    validateForm();
+  }
+
+  function validateForm(): boolean {
+    if (!email || !validateEmail(email)) {
+      error = 'Please enter a valid email address';
+      return false;
+    }
+
+    if (showNextStep) {
+      if (!password || !validatePassword(password)) {
+        error = 'Password must be at least 8 characters with uppercase, lowercase, and numbers';
+        return false;
+      }
+
+      if (!zipCode || !validateZipCode(zipCode)) {
+        error = 'Please enter a valid ZIP code';
+        return false;
+      }
+    }
+
+    error = '';
+    return true;
+  }
+
+  async function handleSubmit() {
+    try {
+      if (!validateForm()) return;
+      
+      if (email && !showNextStep) {
+        showNextStep = true;
+        return;
+      }
+
+      loading = true;
+      error = '';
+      
+      const userData = {
+        email,
+        password,
+        zipCode,
+        emailConsent
+      };
+
+      const response = await fetch(`${PUBLIC_API_URL}/users/signup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(userData)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Signup failed');
+      }
+
+      if (!data.token) {
+        throw new Error('No token received from server');
+      }
+
+      localStorage.setItem('token', data.token);
+      goto('/dashboard');
+
+    } catch (err) {
+      console.error('Signup error:', err);
+      error = err instanceof Error ? err.message : 'Something went wrong during signup';
+    } finally {
+      loading = false;
+    }
   }
 
   function togglePassword() {
@@ -68,7 +182,13 @@
     </div>
 
     <div class="right-section">
-      <form on:submit|preventDefault={handleSubmit}>
+      {#if error}
+        <div class="error-banner">
+          {error}
+        </div>
+      {/if}
+
+      <form on:submit|preventDefault={handleSubmit} novalidate>
         {#if !showNextStep}
           <div class="form-group">
             <input 
@@ -76,43 +196,53 @@
               placeholder="Email address"
               bind:value={email}
               on:blur={handleEmailInput}
+              on:input={handleEmailInput}
+              class={emailTouched && !validateEmail(email) ? 'invalid' : ''}
+              disabled={loading}
               required
+              aria-invalid={emailTouched && !validateEmail(email)}
             />
-            {#if emailTouched && !email}
-              <div class="error-message">
+            {#if emailTouched && !validateEmail(email)}
+              <div class="error-message" role="alert">
                 <svg viewBox="0 0 24 24" width="16" height="16">
                   <path fill="#dc3545" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
                 </svg>
-                <span>An email address or social account is required.</span>
+                <span>Please enter a valid email address</span>
               </div>
             {/if}
           </div>
 
-          <button type="submit" class="continue-button">
-            Continue with email
+          <button type="submit" class="continue-button" disabled={loading}>
+            {loading ? 'Processing...' : 'Next'}
           </button>
 
-          <div class="social-divider">
-            <span>or use a social account</span>
+          <div class="login-account">
+            <p>Already have an account?</p>
+            <a href="/login" class="login-button">
+              Log in
+            </a>
           </div>
-
-          <button type="button" class="social-login-button">
-            <svg width="18" height="18" viewBox="0 0 18 18">
-              <path fill="#4285F4" d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
-              <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
-              <path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/>
-              <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
-            </svg>
-            <span>Continue with Google</span>
-          </button>
         {:else}
           <div class="form-group">
             <input 
               type="text" 
-              placeholder="Zip code"
+              placeholder="ZIP code"
               bind:value={zipCode}
+              on:blur={handleZipCodeInput}
+              on:input={handleZipCodeInput}
+              class={zipCodeTouched && !validateZipCode(zipCode) ? 'invalid' : ''}
+              disabled={loading}
               required
+              aria-invalid={zipCodeTouched && !validateZipCode(zipCode)}
             />
+            {#if zipCodeTouched && !validateZipCode(zipCode)}
+              <div class="error-message" role="alert">
+                <svg viewBox="0 0 24 24" width="16" height="16">
+                  <path fill="#dc3545" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                </svg>
+                <span>Please enter a valid ZIP code (e.g., 12345 or 12345-6789)</span>
+              </div>
+            {/if}
           </div>
 
           <div class="form-group">
@@ -121,41 +251,67 @@
                 type={showPassword ? "text" : "password"}
                 placeholder="Create password"
                 bind:value={password}
-                minlength="8"
+                on:blur={handlePasswordInput}
+                on:input={handlePasswordInput}
+                class={passwordTouched && !validatePassword(password) ? 'invalid' : ''}
+                disabled={loading}
                 required
+                aria-invalid={passwordTouched && !validatePassword(password)}
               />
               <button 
                 type="button" 
                 class="toggle-password"
                 on:click={togglePassword}
+                disabled={loading}
               >
-                {#if showPassword}
-                  <svg viewBox="0 0 24 24" width="24" height="24">
-                    <path fill="currentColor" d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
-                  </svg>
-                {:else}
-                  <svg viewBox="0 0 24 24" width="24" height="24">
-                    <path fill="currentColor" d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
-                  </svg>
-                {/if}
+                <svg viewBox="0 0 24 24" width="24" height="24">
+                  <path fill="currentColor" d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                </svg>
               </button>
             </div>
-            <small>Your password must be at least 8 characters.</small>
+            {#if password}
+              <div class="password-strength">
+                <div class="strength-meter">
+                  <div class="strength-bar {getPasswordStrength(password)}"></div>
+                </div>
+                <span class="strength-text">Password strength: {getPasswordStrength(password)}</span>
+              </div>
+            {/if}
+            {#if passwordTouched && !validatePassword(password)}
+              <div class="password-requirements">
+                <p>Password must contain:</p>
+                <ul>
+                  <li class={password.length >= 8 ? 'met' : ''}>At least 8 characters</li>
+                  <li class={/[A-Z]/.test(password) ? 'met' : ''}>One uppercase letter</li>
+                  <li class={/[a-z]/.test(password) ? 'met' : ''}>One lowercase letter</li>
+                  <li class={/[0-9]/.test(password) ? 'met' : ''}>One number</li>
+                </ul>
+              </div>
+            {/if}
           </div>
 
-          <button type="submit" class="next-button">
-            Submit
+          <button type="submit" class="next-button" disabled={loading}>
+            {loading ? 'Creating account...' : 'Create account'}
           </button>
         {/if}
 
-        <div class="consent-checkbox">
-          <input 
-            type="checkbox" 
-            id="email-consent"
-            checked
-          />
-          <label for="email-consent">
-            Yes! I want {APP_NAME} to email me job alerts and information relevant to my job search.
+        <div class="consent-section">
+          <label class="consent-checkbox" for="email-consent">
+            <div class="checkbox-wrapper">
+              <input 
+                type="checkbox" 
+                id="email-consent"
+                checked
+              />
+              <span class="checkmark">
+                <svg viewBox="0 0 24 24" width="16" height="16">
+                  <path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                </svg>
+              </span>
+            </div>
+            <span class="consent-text">
+              Yes! I want <strong>JobFinder</strong> to email me job alerts and information relevant to my job search.
+            </span>
           </label>
         </div>
 
@@ -163,13 +319,6 @@
           By continuing, you accept the <a href="/terms">Terms of Use</a> and <a href="/privacy">Privacy Policy</a>
         </div>
       </form>
-
-      <div class="login-prompt">
-        Already have an account? Log in as a:
-        <div class="login-options">
-          <a href="/login/job-seeker">Job-seeker</a> | <a href="/login/employer">Employer</a>
-        </div>
-      </div>
     </div>
   </div>
 </div>
@@ -308,69 +457,128 @@
     margin-bottom: 2rem;
   }
 
-  .social-divider {
+  .login-account {
     text-align: center;
-    position: relative;
-    margin: 2rem 0;
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid #e0e0e0;
+  }
+
+  .login-account p {
     color: #666;
-    font-size: 0.9rem;
+    margin-bottom: 1rem;
+    font-size: 0.95rem;
   }
 
-  .social-divider::before,
-  .social-divider::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    width: 45%;
-    height: 1px;
-    background: #e0e0e0;
-  }
-
-  .social-divider::before {
-    left: 0;
-  }
-
-  .social-divider::after {
-    right: 0;
-  }
-
-  .social-login-button {
-    width: 100%;
-    padding: 0.875rem;
+  .login-button {
+    display: inline-block;
+    padding: 0.75rem 2rem;
     background: white;
-    border: 1px solid #e0e0e0;
+    border: 2px solid #6355FF;
+    color: #6355FF;
     border-radius: 50px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
     font-size: 1rem;
-    color: #333;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    margin-bottom: 2rem;
     font-weight: 500;
+    text-decoration: none;
+    transition: all 0.2s ease;
   }
 
-  .social-login-button:hover {
-    background: #f8f9fa;
-    border-color: #d0d0d0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  .login-button:hover {
+    background: #6355FF;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99, 85, 255, 0.2);
   }
 
-  .social-login-button svg {
-    flex-shrink: 0;
+  .consent-section {
+    margin: 1.5rem 0;
   }
 
   .consent-checkbox {
     display: flex;
     gap: 1rem;
-    margin-bottom: 1.5rem;
     align-items: flex-start;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .checkbox-wrapper {
+    position: relative;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    margin-top: 2px;
   }
 
   .consent-checkbox input {
-    margin-top: 0.25rem;
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+    height: 0;
+    width: 0;
+  }
+
+  .checkmark {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 20px;
+    width: 20px;
+    background-color: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+  }
+
+  .consent-checkbox:hover input ~ .checkmark {
+    border-color: #6355FF;
+    background-color: rgba(99, 85, 255, 0.05);
+  }
+
+  .consent-checkbox input:checked ~ .checkmark {
+    background-color: #6355FF;
+    border-color: #6355FF;
+  }
+
+  .consent-checkbox input:focus ~ .checkmark {
+    box-shadow: 0 0 0 3px rgba(99, 85, 255, 0.2);
+  }
+
+  .checkmark svg {
+    opacity: 0;
+    transform: scale(0.8);
+    transition: all 0.2s ease;
+  }
+
+  .consent-checkbox input:checked ~ .checkmark svg {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .consent-text {
+    color: #666;
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+
+  .consent-text strong {
+    color: #333;
+    font-weight: 600;
+  }
+
+  .consent-checkbox input:disabled ~ .checkmark {
+    background-color: #f5f5f5;
+    border-color: #e0e0e0;
+    cursor: not-allowed;
+  }
+
+  .consent-checkbox input:disabled ~ .consent-text {
+    color: #999;
+    cursor: not-allowed;
   }
 
   .terms {
@@ -380,20 +588,6 @@
   }
 
   .terms a {
-    color: #6355FF;
-    text-decoration: none;
-  }
-
-  .login-prompt {
-    text-align: center;
-    color: #333;
-  }
-
-  .login-options {
-    margin-top: 0.5rem;
-  }
-
-  .login-options a {
     color: #6355FF;
     text-decoration: none;
   }
@@ -465,12 +659,9 @@
     transform: translateY(-50%);
     background: none;
     border: none;
-    color: #666;
+    padding: 0;
     cursor: pointer;
-    padding: 0.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    color: #666;
   }
 
   .toggle-password:hover {
@@ -495,5 +686,103 @@
     background: #5346E0;
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(99, 85, 255, 0.2);
+  }
+
+  .error-banner {
+    background: #fff2f2;
+    color: #dc3545;
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 1.5rem;
+    text-align: center;
+    border: 1px solid #ffcdd2;
+  }
+
+  button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  input:disabled {
+    background: #f5f5f5;
+    cursor: not-allowed;
+  }
+
+  .password-strength {
+    margin-top: 0.5rem;
+  }
+
+  .strength-meter {
+    height: 4px;
+    background: #e0e0e0;
+    border-radius: 2px;
+    margin-bottom: 0.25rem;
+  }
+
+  .strength-bar {
+    height: 100%;
+    width: 0;
+    border-radius: 2px;
+    transition: all 0.3s ease;
+  }
+
+  .strength-bar.weak {
+    width: 33.33%;
+    background: #dc3545;
+  }
+
+  .strength-bar.medium {
+    width: 66.66%;
+    background: #ffc107;
+  }
+
+  .strength-bar.strong {
+    width: 100%;
+    background: #28a745;
+  }
+
+  .strength-text {
+    font-size: 0.85rem;
+    color: #666;
+  }
+
+  .password-requirements {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+    font-size: 0.9rem;
+  }
+
+  .password-requirements p {
+    color: #666;
+    margin-bottom: 0.5rem;
+  }
+
+  .password-requirements ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .password-requirements li {
+    color: #dc3545;
+    margin-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .password-requirements li::before {
+    content: "×";
+    font-weight: bold;
+  }
+
+  .password-requirements li.met {
+    color: #28a745;
+  }
+
+  .password-requirements li.met::before {
+    content: "✓";
   }
 </style> 

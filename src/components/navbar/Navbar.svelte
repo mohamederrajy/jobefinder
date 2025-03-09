@@ -1,10 +1,28 @@
-<script>
+<script lang="ts">
   import { slide } from 'svelte/transition';
+  import { user } from '../../stores/userStore';
+  import { onMount } from 'svelte';
+  
   let showDropdown = false;
+  let mounted = false;
 
-  function toggleDropdown(event) {
+  onMount(() => {
+    mounted = true;
+  });
+
+  function toggleDropdown(event: Event) {
     event.preventDefault();
     showDropdown = !showDropdown;
+  }
+  
+  async function handleLogout() {
+    try {
+      await user.logout();
+      showDropdown = false;
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
   }
 </script>
 
@@ -20,24 +38,54 @@
     
     <div class="nav-right">
       <a href="/employers" class="employers-link">Employers</a>
-      <a href="/signup" class="sign-up-button">Sign up</a>
-      <button class="menu-button" on:click={toggleDropdown}>
-        <svg viewBox="0 0 24 24" width="24" height="24">
-          <path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
-        </svg>
-      </button>
+      
+      {#if $user && $user.token}
+        <!-- Show for logged in users -->
+        <a href="/dashboard" class="dashboard-link">Dashboard</a>
+        <div class="user-menu-container">
+          <button class="user-menu-button" on:click={toggleDropdown}>
+            <div class="user-avatar">
+              {#if $user.name}
+                {$user.name.charAt(0).toUpperCase()}
+              {:else}
+                U
+              {/if}
+            </div>
+          </button>
+        </div>
+      {:else}
+        <!-- Show for logged out users -->
+        <a href="/signup" class="sign-up-button">Sign up</a>
+        <button class="menu-button" on:click={toggleDropdown}>
+          <svg viewBox="0 0 24 24" width="24" height="24">
+            <path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+          </svg>
+        </button>
+      {/if}
     </div>
   </div>
 
   {#if showDropdown}
     <div class="dropdown-menu" transition:slide>
-      <a href="/salary-calculator" class="menu-item">Salary calculator</a>
-      <a href="/blog" class="menu-item">Blog</a>
-      <a href="/contact" class="menu-item">Contact us</a>
-      <a href="/help" class="menu-item">Help Center</a>
-      <div class="menu-divider"></div>
-      <a href="/signup" class="create-account">Create an account</a>
-      <a href="/login" class="login">Log in</a>
+      {#if $user && $user.token}
+        <!-- Logged in dropdown menu -->
+        <a href="/dashboard" class="menu-item">Dashboard</a>
+        <a href="/profile" class="menu-item">Profile</a>
+        <a href="/saved-jobs" class="menu-item">Saved Jobs</a>
+        <a href="/applications" class="menu-item">Applications</a>
+        <div class="menu-divider"></div>
+        <a href="/settings" class="menu-item">Settings</a>
+        <button class="logout-button" on:click={handleLogout}>Log out</button>
+      {:else}
+        <!-- Logged out dropdown menu -->
+        <a href="/salary-calculator" class="menu-item">Salary calculator</a>
+        <a href="/blog" class="menu-item">Blog</a>
+        <a href="/contact" class="menu-item">Contact us</a>
+        <a href="/help" class="menu-item">Help Center</a>
+        <div class="menu-divider"></div>
+        <a href="/signup" class="create-account">Create an account</a>
+        <a href="/login" class="login">Log in</a>
+      {/if}
     </div>
   {/if}
 </nav>
@@ -209,6 +257,63 @@
     background: #f5f5f5;
   }
 
+  .dashboard-link {
+    color: #333;
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s ease;
+    font-family: serif;
+    font-size: 1.1rem;
+  }
+
+  .dashboard-link:hover {
+    color: #6355FF;
+  }
+  
+  .user-menu-container {
+    position: relative;
+  }
+  
+  .user-menu-button {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .user-avatar {
+    width: 36px;
+    height: 36px;
+    background: #6355FF;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.1rem;
+  }
+  
+  .logout-button {
+    background: none;
+    border: none;
+    color: #EF4444;
+    padding: 0.75rem 1.5rem;
+    text-align: left;
+    font-size: 1.1rem;
+    font-weight: 500;
+    cursor: pointer;
+    width: 100%;
+    font-family: serif;
+  }
+  
+  .logout-button:hover {
+    background-color: #FEE2E2;
+  }
+
   @media (max-width: 768px) {
     .nav-content {
       padding: 0.75rem 1rem;
@@ -218,11 +323,11 @@
       font-size: 1.25rem;
     }
 
-    .employers-link, .sign-up-button {
+    .employers-link, .sign-up-button, .dashboard-link {
       display: none;
     }
 
-    .menu-button {
+    .menu-button, .user-menu-button {
       display: block;
     }
 

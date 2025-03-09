@@ -1,6 +1,45 @@
-<script>
+<script lang="ts">
+  import { createEventDispatcher } from 'svelte';
+  import { goto } from '$app/navigation';
+  
+  const dispatch = createEventDispatcher<{
+    search: { query: string; location: string };
+  }>();
+  
   let searchQuery = '';
   let location = '';
+  
+  // Watch for changes in search inputs and dispatch search event
+  $: {
+    // Dispatch search event whenever inputs change
+    dispatch('search', {
+      query: searchQuery,
+      location: location
+    });
+  }
+  
+  function handleSearch() {
+    // Dispatch search event to parent component
+    dispatch('search', {
+      query: searchQuery,
+      location: location
+    });
+  }
+  
+  function handleKeyPress(event: KeyboardEvent) {
+    if (event.key === 'Enter') {
+      handleSearch();
+    }
+  }
+  
+  // Clear individual search fields
+  function clearSearchQuery() {
+    searchQuery = "";
+  }
+  
+  function clearSearchLocation() {
+    location = "";
+  }
 </script>
 
 <div class="hero">
@@ -21,7 +60,15 @@
           type="text" 
           placeholder="Job title, keyword, or company"
           bind:value={searchQuery}
+          on:keypress={handleKeyPress}
         >
+        {#if searchQuery}
+          <button class="clear-search" on:click={clearSearchQuery}>
+            <svg viewBox="0 0 24 24" width="16" height="16">
+              <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+            </svg>
+          </button>
+        {/if}
       </div>
       
       <div class="location-input">
@@ -34,10 +81,18 @@
           type="text" 
           placeholder="City or zip code"
           bind:value={location}
+          on:keypress={handleKeyPress}
         >
+        {#if location}
+          <button class="clear-search" on:click={clearSearchLocation}>
+            <svg viewBox="0 0 24 24" width="16" height="16">
+              <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+            </svg>
+          </button>
+        {/if}
       </div>
 
-      <button class="search-button">
+      <button class="search-button" on:click={handleSearch}>
         Search Jobs
       </button>
     </div>
@@ -409,5 +464,24 @@
     .search-tags {
       margin-bottom: 2.5rem;
     }
+  }
+
+  .clear-search {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #9CA3AF;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .clear-search:hover {
+    color: #6B7280;
   }
 </style> 
