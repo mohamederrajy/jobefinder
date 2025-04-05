@@ -8,6 +8,12 @@
   import Footer from '../../../components/footer/Footer.svelte';
   import { subscription } from '../../../stores/subscriptionStore';
   import SubscriptionModal from '../../../components/modals/SubscriptionModal.svelte';
+  import JobDescription from '../../../components/jobs/JobDescription.svelte';
+  import JobRequirements from '../../../components/jobs/JobRequirements.svelte';
+  import JobCompanyInfo from '../../../components/jobs/JobCompanyInfo.svelte';
+  import JobSimilar from '../../../components/jobs/JobSimilar.svelte';
+  import JobActions from '../../../components/jobs/JobActions.svelte';
+  import { formatSalary, formatDate } from '../../../utils/formatters';
 
   interface Job {
     _id: string;
@@ -161,6 +167,25 @@
   function toggleDescription() {
     showFullDescription = !showFullDescription;
   }
+
+  function getApplyLink() {
+    if (!job) return '#';
+    
+    // Check if there's a direct application URL
+    if (job.jobUrl) return job.jobUrl;
+    
+    // Check if there's an email to apply
+    if (job.contactDetails?.email) return `mailto:${job.contactDetails.email}?subject=Application for ${job.title} position`;
+    
+    // Check if there's a website
+    if (job.company && job.company.website) return job.company.website;
+    
+    // Fallback to company profile if available
+    if (job.company && job.company._id) return `/companies/${job.company._id}`;
+    
+    // No apply link available
+    return '#';
+  }
 </script>
 
 <div class="page-wrapper">
@@ -210,16 +235,17 @@
                 <div class="job-info">
                   <div class="title-wrapper">
                     <h1>{job.title}</h1>
-                    <span class="now-hiring">Now Hiring</span>
-                  </div>
-                  <div class="company-meta">
-                    <span class="company-name">{job.company}</span>
-                    <span class="dot">•</span>
-                    <span class="posted-date">{formatDaysAgo(job.createdAt)}</span>
-                    {#if job.isUrgent}
-                      <span class="dot">•</span>
-                      <span class="urgent-badge">Urgently hiring</span>
-                    {/if}
+                    <div class="job-meta">
+                      <span class="company-name">{job.company}</span>
+                      <span class="job-location">{job.address.city}, {job.address.state}</span>
+                      <a href={getApplyLink()} target="_blank" rel="noopener noreferrer" class="easy-apply-btn">
+                        Easy Apply
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M5 12h14"></path>
+                          <path d="M12 5l7 7-7 7"></path>
+                        </svg>
+                      </a>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -228,12 +254,6 @@
                 <button class="save-button" aria-label="Save job">
                   <svg viewBox="0 0 24 24" width="24" height="24">
                     <path fill="currentColor" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                  </svg>
-                </button>
-                <button class="apply-button">
-                  Apply Now
-                  <svg viewBox="0 0 24 24" width="20" height="20">
-                    <path fill="currentColor" d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/>
                   </svg>
                 </button>
               </div>
@@ -719,28 +739,13 @@
     margin: 0;
   }
 
-  .now-hiring {
-    display: inline-flex;
-    align-items: center;
-    background: #EEF2FF;
-    color: #4F46E5;
-    padding: 0.375rem 1rem;
-    border-radius: 100px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.025em;
-    text-transform: uppercase;
-    border: 1px solid #E0E7FF;
-  }
-
-  .company-meta {
+  .job-meta {
     display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    color: #4B5563;
+    font-size: 0.95rem;
     align-items: center;
-    gap: 0.75rem;
-    color: #6B7280;
-    font-size: 1rem;
-    line-height: 1.5;
-    margin-top: 0.5rem;
   }
 
   .company-name {
@@ -748,14 +753,9 @@
     font-weight: 600;
   }
 
-  .dot {
-    color: #D1D5DB;
-  }
-
-  .urgent-badge {
-    color: #DC2626;
-    font-weight: 600;
-    letter-spacing: 0.025em;
+  .job-location {
+    color: #4B5563;
+    font-weight: 500;
   }
 
   .action-buttons {
@@ -782,28 +782,6 @@
     border-color: #6355FF;
     color: #6355FF;
     transform: translateY(-2px);
-  }
-
-  .apply-button {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    background: #6355FF;
-    color: white;
-    border: none;
-    padding: 0.875rem 2rem;
-    border-radius: 12px;
-    font-weight: 600;
-    font-size: 1.125rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    box-shadow: 0 4px 12px rgba(99, 85, 255, 0.25);
-  }
-
-  .apply-button:hover {
-    background: #5346E5;
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(99, 85, 255, 0.35);
   }
 
   .job-overview {

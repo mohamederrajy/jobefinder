@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { user } from '../../stores/userStore';
+  import { user, clearUser } from '../../stores/userStore';
   import { goto } from '$app/navigation';
   import type { SearchEvent } from '../../types/events';
   import { onMount } from 'svelte';
@@ -42,7 +42,7 @@
 
   async function handleLogout() {
     try {
-      await user.logout();
+      clearUser();
       showDropdown = false;
       await goto('/login');
     } catch (error) {
@@ -76,7 +76,7 @@
 <nav class="nav">
   <div class="nav-content">
     <a href="/" class="logo">
-      <span class="logo-text">JobFinder</span>
+      <img src="/static/images/logojob.png" alt="JobFinder Logo" class="logo-image" />
     </a>
 
     <div class="search-bar">
@@ -172,18 +172,14 @@
               </div>
 
               <div class="menu-section">
-                <a href="/profile" class="menu-item">Profile</a>
-                <a href="/dashboard" class="menu-item">Dashboard</a>
+                <a href="/dashboard/profile" class="menu-item">Profile</a>
+                <a href="/dashboard" class="menu-item">jobs</a>
                 <a href="/interviews" class="menu-item">Interviews</a>
-                <a href="/applications" class="menu-item">Applications</a>
-                <a href="/saved" class="menu-item">Saved jobs</a>
-                <a href="/history" class="menu-item">History</a>
+                <a href="/dashboard/saved" class="menu-item">Saved jobs</a>
+                <a href="/dashboard/recent" class="menu-item">Recently viewed</a>
               </div>
 
-              <div class="menu-section">
-                <a href="/settings" class="menu-item">Settings & notifications</a>
-                <a href="/security" class="menu-item">Password & security</a>
-              </div>
+            
 
               <div class="menu-section">
                 <a href="/blog" class="menu-item">Blog</a>
@@ -283,13 +279,14 @@
 
   .logo {
     text-decoration: none;
+    display: flex;
+    align-items: center;
   }
 
-  .logo-text {
-    color: #6355FF;
-    font-size: 1.5rem;
-    font-weight: 500;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  .logo-image {
+    height: 40px;
+    width: auto;
+    object-fit: contain;
   }
 
   .search-bar {
@@ -579,8 +576,8 @@
       padding: 0 12px;
     }
     
-    .logo-text {
-      font-size: 1.25rem;
+    .logo-image {
+      height: 32px;
     }
     
     .search-bar {
@@ -625,8 +622,8 @@
       padding: 0 8px;
     }
     
-    .logo-text {
-      font-size: 1.2rem;
+    .logo-image {
+      height: 28px;
     }
     
     .search-bar {

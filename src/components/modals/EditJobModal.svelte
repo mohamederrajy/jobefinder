@@ -28,6 +28,7 @@
     tags: string[];
     isUrgent: boolean;
     logo?: string;
+    imageUrl?: string;
   };
 
   let loading = false;
@@ -54,6 +55,12 @@
   let logoFile: File | null = null;
   let logoChanged = false;
 
+  // Demo image handling
+  let demoImageInput: HTMLInputElement;
+  let previewDemoImage: string | null = job.imageUrl || null;
+  let demoImageFile: File | null = null;
+  let demoImageChanged = false;
+
   function handleLogoChange(event: Event) {
     const input = event.target as HTMLInputElement;
     if (input.files && input.files[0]) {
@@ -68,6 +75,22 @@
     logoFile = null;
     logoChanged = true;
     if (logoInput) logoInput.value = '';
+  }
+
+  function handleDemoImageChange(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files[0]) {
+      demoImageFile = input.files[0];
+      previewDemoImage = URL.createObjectURL(input.files[0]);
+      demoImageChanged = true;
+    }
+  }
+
+  function removeDemoImage() {
+    previewDemoImage = null;
+    demoImageFile = null;
+    demoImageChanged = true;
+    if (demoImageInput) demoImageInput.value = '';
   }
 
   onMount(() => {
@@ -124,21 +147,55 @@
       loading = true;
       error = null;
 
-      // Use FormData to handle file upload
+      // Validate required fields
+      if (!jobData.title || !jobData.company || !jobData.about || !jobData.hourlyRate ||
+          !jobData.address.street || !jobData.address.city || !jobData.address.state || !jobData.address.zipCode) {
+        throw new Error('Please fill in all required fields');
+      }
+
       const formData = new FormData();
       
-      // Add all job data as JSON
-      const jobDataCopy = { ...jobData };
-      delete jobDataCopy.logo; // Remove logo from JSON data
-      formData.append('jobData', JSON.stringify(jobDataCopy));
+      // Prepare complete job data with all fields
+      const jobDataToSend = {
+        title: jobData.title,
+        company: jobData.company,
+        about: jobData.about,
+        hourlyRate: Number(jobData.hourlyRate), // Ensure hourlyRate is a number
+        address: {
+          street: jobData.address.street,
+          city: jobData.address.city,
+          state: jobData.address.state,
+          zipCode: jobData.address.zipCode
+        },
+        contactDetails: {
+          name: jobData.contactDetails?.name || '',
+          email: jobData.contactDetails?.email || '',
+          phone: jobData.contactDetails?.phone || ''
+        },
+        jobUrl: jobData.jobUrl || '',
+        tags: jobData.tags || [],
+        isUrgent: Boolean(jobData.isUrgent), // Ensure boolean
+        // Don't include logo and imageUrl in jobData as they're handled separately
+      };
+
+      // Add job data as JSON string
+      formData.append('jobData', JSON.stringify(jobDataToSend));
       
-      // Add logo file if changed
+      // Handle logo update
       if (logoChanged) {
         if (logoFile) {
           formData.append('logo', logoFile);
         } else {
-          // If logo was removed, send a flag to remove it
           formData.append('removeLogo', 'true');
+        }
+      }
+
+      // Handle demo image update
+      if (demoImageChanged) {
+        if (demoImageFile) {
+          formData.append('demoImage', demoImageFile);
+        } else {
+          formData.append('removeDemoImage', 'true');
         }
       }
 
@@ -153,14 +210,60 @@
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to update job');
+        switch (response.status) {
+          case 401:
+            throw new Error('Authentication required. Please log in again.');
+          case 403:
+            throw new Error('You do not have permission to update this job.');
+          case 404:
+            throw new Error('Job not found. It may have been deleted.');
+          case 500:
+            throw new Error('Server error. Please try again later.');
+          default:
+            throw new Error(data.message || 'Failed to update job');
+        }
       }
 
-      dispatch('jobUpdated', data);
-      dispatch('close');
+      // Update successful - ensure all fields are included in the response
+      dispatch('jobUpdated', {
+        ...data,
+        _id: data._id,
+        title: data.title,
+        company: data.company,
+        about: data.about,
+        hourlyRate: data.hourlyRate,
+        address: data.address,
+        contactDetails: data.contactDetails,
+        jobUrl: data.jobUrl,
+        tags: data.tags,
+        isUrgent: data.isUrgent,
+        logo: data.logo || null,
+        imageUrl: data.imageUrl || null,
+        createdAt: data.createdAt,
+        createdBy: data.createdBy
+      });
+      
+      // Show success message
+      const successMessage = document.createElement('div');
+      successMessage.className = 'success-message';
+      successMessage.textContent = 'Job updated successfully!';
+      document.body.appendChild(successMessage);
+      
+      setTimeout(() => {
+        successMessage.remove();
+        dispatch('close');
+      }, 2000);
+
     } catch (err) {
       console.error('Error updating job:', err);
       error = err instanceof Error ? err.message : 'Failed to update job';
+      
+      // Scroll error message into view
+      if (error) {
+        setTimeout(() => {
+          document.querySelector('.error-message')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+      }
     } finally {
       loading = false;
     }
@@ -214,6 +317,43 @@
         <div class="company-info">
           <h3>{jobData.company}</h3>
           <p>{jobData.title}</p>
+        </div>
+      </div>
+
+      <div class="section-divider">
+        <span>Demo Image</span>
+      </div>
+
+      <div class="form-group demo-image-group">
+        <label>Demo Image</label>
+        <div class="demo-image-upload-container">
+          {#if previewDemoImage}
+            <div class="demo-image-preview">
+              <img src={previewDemoImage} alt="Job demo preview" />
+              <button type="button" class="remove-demo-image" on:click={removeDemoImage}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+          {:else}
+            <label for="demo-image-upload" class="demo-upload-placeholder">
+              <svg viewBox="0 0 24 24" width="24" height="24">
+                <path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+              </svg>
+              <span>Upload Demo Image</span>
+              <span class="demo-image-hint">Recommended: 1920x1080px</span>
+            </label>
+            <input 
+              type="file" 
+              id="demo-image-upload" 
+              accept="image/*"
+              on:change={handleDemoImageChange}
+              bind:this={demoImageInput}
+              style="display: none;"
+            />
+          {/if}
         </div>
       </div>
 
@@ -762,9 +902,61 @@
   .error-message {
     background: #FEE2E2;
     color: #DC2626;
-    padding: 1rem;
+    padding: 1.25rem;
     border-radius: 8px;
     margin: 0 1.5rem 1.5rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    animation: shake 0.5s ease-in-out;
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+  }
+
+  .success-message {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #059669;
+    color: white;
+    padding: 1rem 2rem;
+    border-radius: 8px;
+    font-weight: 500;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    z-index: 1100;
+    animation: slideUp 0.3s ease-out;
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translate(-50%, 100%);
+      opacity: 0;
+    }
+    to {
+      transform: translate(-50%, 0);
+      opacity: 1;
+    }
+  }
+
+  .submit-btn:disabled {
+    background: #9CA3AF;
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
+  .submit-btn:not(:disabled):hover {
+    background: #5344FF;
+    transform: translateY(-1px);
+  }
+
+  .submit-btn:not(:disabled):active {
+    transform: translateY(0);
   }
 
   @media (max-width: 640px) {
@@ -954,6 +1146,79 @@
   }
 
   .remove-logo:hover {
+    background: #B91C1C;
+    transform: scale(1.1);
+  }
+
+  .demo-image-group {
+    grid-column: span 2;
+  }
+
+  .demo-image-upload-container {
+    width: 100%;
+  }
+
+  .demo-image-preview {
+    position: relative;
+    width: 100%;
+    height: 240px;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .demo-image-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border: 1px solid #E5E7EB;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  .demo-upload-placeholder {
+    width: 100%;
+    height: 240px;
+    border: 2px dashed #E5E7EB;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: #6B7280;
+    background: #F9FAFB;
+  }
+
+  .demo-upload-placeholder:hover {
+    border-color: #6355FF;
+    color: #6355FF;
+    background: rgba(99, 85, 255, 0.05);
+  }
+
+  .demo-image-hint {
+    font-size: 0.875rem;
+    color: #9CA3AF;
+  }
+
+  .remove-demo-image {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(220, 38, 38, 0.9);
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+
+  .remove-demo-image:hover {
     background: #B91C1C;
     transform: scale(1.1);
   }

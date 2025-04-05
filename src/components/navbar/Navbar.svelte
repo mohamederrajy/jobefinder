@@ -1,6 +1,7 @@
 <script lang="ts">
   import { slide } from 'svelte/transition';
   import { user } from '../../stores/userStore';
+  import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   
   let showDropdown = false;
@@ -17,11 +18,25 @@
   
   async function handleLogout() {
     try {
-      await user.logout();
+      localStorage.removeItem('user');
+      localStorage.removeItem('token');
+      
+      user.set(null);
+      
       showDropdown = false;
-      window.location.href = '/';
+      
+      sessionStorage.clear();
+      
+      await goto('/', { replaceState: true });
+      
+      window.location.reload();
     } catch (error) {
       console.error('Logout failed:', error);
+      notifications?.add({
+        type: 'error',
+        message: 'Failed to logout. Please try again.',
+        duration: 3000
+      });
     }
   }
 </script>
@@ -29,15 +44,10 @@
 <nav>
   <div class="nav-content">
     <a href="/" class="logo">
-      <div class="logo-container">
-        <span class="job">Job</span>
-        <span class="separator">|</span>
-        <span class="finder">Finder</span>
-      </div>
+      <img src="/static/images/logojob.png" alt="JobFinder Logo" class="logo-image" />
     </a>
     
     <div class="nav-right">
-      <a href="/employers" class="employers-link">Employers</a>
       
       {#if $user && $user.token}
         <!-- Show for logged in users -->
@@ -70,12 +80,14 @@
       {#if $user && $user.token}
         <!-- Logged in dropdown menu -->
         <a href="/dashboard" class="menu-item">Dashboard</a>
-        <a href="/profile" class="menu-item">Profile</a>
-        <a href="/saved-jobs" class="menu-item">Saved Jobs</a>
-        <a href="/applications" class="menu-item">Applications</a>
-        <div class="menu-divider"></div>
-        <a href="/settings" class="menu-item">Settings</a>
-        <button class="logout-button" on:click={handleLogout}>Log out</button>
+        <a href="/dashboard/profile" class="menu-item">Profile</a>
+        <a href="/dashboard/saved" class="menu-item">Saved Jobs</a>
+        <button 
+          class="logout-button" 
+          on:click|preventDefault={handleLogout}
+        >
+          Log out
+        </button>
       {:else}
         <!-- Logged out dropdown menu -->
         <a href="/salary-calculator" class="menu-item">Salary calculator</a>
@@ -116,30 +128,10 @@
     align-items: center;
   }
 
-  .logo-container {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .job {
-    color: #333;
-    font-size: 1.5rem;
-    font-weight: bold;
-    font-family: serif;
-  }
-
-  .separator {
-    color: #6355FF;
-    font-size: 1.5rem;
-    opacity: 0.7;
-  }
-
-  .finder {
-    color: #6355FF;
-    font-size: 1.5rem;
-    font-weight: bold;
-    font-family: serif;
+  .logo-image {
+    height: 40px;
+    width: auto;
+    object-fit: contain;
   }
 
   .nav-right {
@@ -308,6 +300,7 @@
     cursor: pointer;
     width: 100%;
     font-family: serif;
+    transition: all 0.2s ease;
   }
   
   .logout-button:hover {
@@ -319,8 +312,8 @@
       padding: 0.75rem 1rem;
     }
 
-    .logo-text {
-      font-size: 1.25rem;
+    .logo-image {
+      height: 32px;
     }
 
     .employers-link, .sign-up-button, .dashboard-link {
@@ -349,10 +342,6 @@
       padding: 0 1rem;
     }
     
-    .logo-text {
-      font-size: 1.25rem;
-    }
-
     .dropdown-menu {
       margin-right: 0;
       border-radius: 0;

@@ -4,7 +4,10 @@
   import { checkSubscription } from '../../lib/api/subscription';
   import { goto } from '$app/navigation';
   import { PUBLIC_API_URL } from '$env/static/public';
-  import { login } from '$lib/api';
+  import { login } from '../../stores/userStore';
+  import { onMount } from 'svelte';
+  import { page } from '$app/stores';
+  import { get } from 'svelte/store';
   
   let email = '';
   let password = '';
@@ -14,6 +17,15 @@
   let error: string | null = null;
   let loading = false;
   let showError = false;
+  let redirectTo = '/dashboard';
+
+  onMount(() => {
+    // Check if there's a redirect parameter in the URL
+    const urlParams = new URLSearchParams($page.url.search);
+    if (urlParams.has('redirect')) {
+      redirectTo = urlParams.get('redirect');
+    }
+  });
 
   function validateEmail(email: string): boolean {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -28,7 +40,7 @@
     try {
       loading = true;
       error = null;
-
+      
       const response = await fetch(`${PUBLIC_API_URL}/users/login`, {
         method: 'POST',
         headers: {
@@ -36,33 +48,45 @@
         },
         body: JSON.stringify({ email, password })
       });
-
-      const data = await response.json();
-
+      
       if (!response.ok) {
-        throw new Error(data.message || 'Login failed');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Login failed. Please check your credentials.');
       }
-
-      // Store user data
-      user.login({
-        _id: data.user._id,
-        email: data.user.email,
-        role: data.user.role,
-        isPaid: false, // Will be updated after checking subscription
-        token: data.token
+      
+      const userData = await response.json();
+      
+      // Use the login function from userStore
+      login({
+        id: userData.user._id,
+        email: userData.user.email,
+        token: userData.token,
+        role: userData.user.role,
+        profile: userData.user.profile || {},
+        subscription: userData.user.subscription || { isPaid: false, plan: 'free' }
       });
-
-      // Check subscription status
-      await checkSubscription(data.token);
-
-      // Redirect based on role
-      if (data.user.role === 'admin') {
-        goto('/admin');
+      
+      // Redirect admin users to admin dashboard
+      if (userData.user.role === 'admin') {
+        await goto('/admin');
       } else {
+        // Redirect regular users to dashboard or specified redirect URL
+        await goto(redirectTo);
+      }
+      
+      // After successful login and setting user store
+      await subscription.checkStatus();
+      
+      // Redirect based on subscription status
+      const subStatus = get(subscription);
+      if (subStatus.isPaid) {
         goto('/dashboard');
+      } else {
+        goto('/pricing');
       }
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Login failed';
+      console.error('Login error:', err);
+      error = err.message || 'An error occurred during login. Please try again.';
     } finally {
       loading = false;
     }
@@ -111,13 +135,7 @@
     </div>
   {/if}
 
-  <a href="/" class="logo">
-    <div class="logo-container">
-      <span class="job">Job</span>
-      <span class="separator">|</span>
-      <span class="finder">Finder</span>
-    </div>
-  </a>
+  
 
   <div class="signup-content">
     <div class="left-section">

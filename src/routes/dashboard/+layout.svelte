@@ -1,17 +1,87 @@
 <script lang="ts">
   import DashboardNav from '../../components/dashboard/DashboardNav.svelte';
-  import Footer from '../../components/footer/Footer.svelte';
   import DiscoverJobList from '../../components/jobs/DiscoverJobList.svelte';
   import { user } from '../../stores/userStore';
   import { subscription } from '../../stores/subscriptionStore';
   import { goto } from '$app/navigation';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { PUBLIC_API_URL } from '$env/static/public';
+  import { writable } from 'svelte/store';
+  import { page } from '$app/stores';
+  import SubscriptionGuard from '$lib/components/SubscriptionGuard.svelte';
+  import SubscriptionModal from '../../components/modals/SubscriptionModal.svelte';
 
   let searchQuery = '';
   let searchLocation = '';
   let isFirstJob: boolean | null = null;
   let savedJobsCount = 0;
+  let showSubscriptionModal = false;
+
+  // Create a store for the count instead of a regular variable
+  const recentViewCount = writable(0);
+
+  let sidebarLinks = [
+    { href: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
+    { href: '/dashboard/jobs', label: 'Browse Jobs', icon: 'search' },
+    { href: '/dashboard/saved', label: 'Saved Jobs', icon: 'bookmark' },
+    { href: '/dashboard/recent', label: 'Recently Viewed', icon: 'history' },
+    { href: '/dashboard/profile', label: 'My Profile', icon: 'person' },
+    // Other links...
+  ];
+
+  // Define the subscription data interface
+  interface SubscriptionData {
+    isPaid: boolean;
+    subscription: {
+      status: 'active' | 'free' | 'incomplete';
+      plan: 'monthly' | 'quarterly' | 'yearly' | 'free';
+      current_period_end: number;
+      current_period_start: number;
+      stripe_subscription_id: string;
+      stripe_price_id: string;
+      cancel_at_period_end: boolean;
+      isPaid: boolean;
+    }
+  }
+
+  // Check subscription status function
+  async function checkSubscriptionStatus(): Promise<SubscriptionData> {
+    try {
+      const response = await fetch(`${PUBLIC_API_URL}/subscriptions/status`, {
+        headers: {
+          'x-auth-token': $user?.token || ''
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch subscription status');
+      }
+
+      const data: SubscriptionData = await response.json();
+      console.log('Subscription status:', data);
+
+      // Update the subscription store
+      subscription.set(data.subscription);
+      
+      return data;
+    } catch (error) {
+      console.error('Error checking subscription:', error);
+      // Return default free subscription status on error
+      return {
+        isPaid: false,
+        subscription: {
+          status: 'free',
+          plan: 'free',
+          current_period_end: 0,
+          current_period_start: 0,
+          stripe_subscription_id: '',
+          stripe_price_id: '',
+          cancel_at_period_end: false,
+          isPaid: false
+        }
+      };
+    }
+  }
 
   onMount(async () => {
     if (!$user) {
@@ -19,32 +89,31 @@
       return;
     }
 
-    // Check subscription status on mount
     if ($user?.token) {
-      try {
-        const response = await fetch(`${PUBLIC_API_URL}/users/subscription`, {
-          headers: {
-            'Content-Type': 'application/json',
-            'x-auth-token': $user.token
-          }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          console.log('Subscription status:', data);
-          subscription.set(data);
-        } else {
-          // If request fails, set to not paid
-          subscription.set({ isPaid: false });
-        }
-      } catch (error) {
-        console.error('Error fetching subscription status:', error);
-        // If error occurs, set to not paid
-        subscription.set({ isPaid: false });
-      }
+      await checkSubscriptionStatus();
     }
 
     await loadSavedJobsCount();
+
+    // Initialize the count
+    updateRecentViewCount();
+    
+    // Add event listener for localStorage changes
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Add event listener for custom event
+    window.addEventListener('recentlyViewedJobsUpdated', handleCustomEvent);
+    
+    // Set up an interval to check for changes (as a backup)
+    const intervalId = setInterval(() => {
+      updateRecentViewCount();
+    }, 2000); // Check every 2 seconds
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('recentlyViewedJobsUpdated', handleCustomEvent);
+      clearInterval(intervalId);
+    };
   });
 
   async function loadSavedJobsCount() {
@@ -84,6 +153,68 @@
   function handleFirstJobResponse(response: boolean) {
     isFirstJob = response;
   }
+
+  // Function to get user identifier
+  function getUserIdentifier() {
+    if ($user && $user.id) return $user.id;
+    if ($user && $user.email) return $user.email;
+    return null;
+  }
+  
+  // Function to get recently viewed jobs count
+  function updateRecentViewCount() {
+    try {
+      const userId = getUserIdentifier();
+      if (!userId) {
+        recentViewCount.set(0);
+        return;
+      }
+      
+      const recentJobsJson = localStorage.getItem('recentlyViewedJobs');
+      if (!recentJobsJson) {
+        recentViewCount.set(0);
+        return;
+      }
+      
+      const allRecentJobs = JSON.parse(recentJobsJson) as Job[];
+      const userRecentJobs = allRecentJobs.filter((job: Job) => job.userId === userId);
+      recentViewCount.set(userRecentJobs.length);
+    } catch (err) {
+      console.error('Error counting recently viewed jobs:', err);
+      recentViewCount.set(0);
+    }
+  }
+  
+  // Set up storage event listener to update count when localStorage changes
+  function handleStorageChange(event: StorageEvent) {
+    if (event.key === 'recentlyViewedJobs') {
+      updateRecentViewCount();
+    }
+  }
+  
+  // Handle custom event
+  function handleCustomEvent() {
+    updateRecentViewCount();
+  }
+
+  // Fix TypeScript errors
+  interface StorageEvent {
+    key: string | null;
+    newValue: string | null;
+    oldValue: string | null;
+    storageArea: Storage | null;
+    url: string;
+  }
+
+  interface Job {
+    userId: string;
+    // add other job properties as needed
+  }
+
+  function handleUpgradeClick(event: MouseEvent) {
+    event.preventDefault();
+    showSubscriptionModal = true;
+  }
 </script>
 
 <div class="dashboard-layout">
@@ -102,22 +233,22 @@
     <!-- Dashboard Cards Section -->
     <div class="dashboard-section">
       <div class="dashboard-grid">
-        <a href="/dashboard/interviews" class="dashboard-card">
+        <a href="/dashboard" class="dashboard-card">
           <div class="card-icon">
             <svg viewBox="0 0 24 24" width="24" height="24">
-              <path fill="#6355FF" d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
+              <path fill="#6355FF" d="M20 6h-4V4c0-1.11-.89-2-2-2h-4c-1.11 0-2 .89-2 2v2H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-6 0h-4V4h4v2z"/>
             </svg>
           </div>
-          <h2>Interviews</h2>
+          <h2>Jobs</h2>
         </a>
 
-        <a href="/dashboard/applications" class="dashboard-card">
+        <a href="/dashboard/profile" class="dashboard-card">
           <div class="card-icon">
             <svg viewBox="0 0 24 24" width="24" height="24">
-              <path fill="#6355FF" d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+              <path fill="#6355FF" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
             </svg>
           </div>
-          <h2>Applications</h2>
+          <h2>Profile</h2>
         </a>
 
         <a href="/dashboard/saved" class="dashboard-card">
@@ -138,7 +269,12 @@
               <path fill="#6355FF" d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
             </svg>
           </div>
-          <h2>Recently viewed</h2>
+          <div class="card-content">
+            <h2>Recently viewed</h2>
+            {#if $recentViewCount > 0}
+              <span class="count">{$recentViewCount}</span>
+            {/if}
+          </div>
         </a>
       </div>
     </div>
@@ -152,12 +288,59 @@
 
     <!-- Bottom Sections -->
     <div class="bottom-sections">
-      <!-- Discover Section -->
-      <div class="discover-section">
-        <h2 class="section-title">Discover more great jobs</h2>
-        <p class="section-subtitle">Job matches based on your preferences</p>
-        <DiscoverJobList />
-      </div>
+      <!-- Discover Section - Only show for paid users -->
+      {#if $subscription?.isPaid}
+        <div class="discover-section">
+          <h2 class="section-title">Discover more great jobs</h2>
+          <p class="section-subtitle">Job matches based on your preferences</p>
+          <DiscoverJobList />
+        </div>
+      {:else}
+        <div class="discover-section upgrade-prompt">
+          <div class="upgrade-content">
+            <div class="upgrade-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#6355FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 17L12 22L22 17" stroke="#6355FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 12L12 17L22 12" stroke="#6355FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <h2 class="section-title">Unlock Premium Features</h2>
+            <p class="section-subtitle">Get access to exclusive job recommendations and premium features</p>
+            
+            <div class="features-grid">
+              <div class="feature-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path d="M20 6L9 17L4 12" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Personalized job matches</span>
+              </div>
+              <div class="feature-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path d="M20 6L9 17L4 12" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Early access to new jobs</span>
+              </div>
+              <div class="feature-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path d="M20 6L9 17L4 12" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Advanced search filters</span>
+              </div>
+            </div>
+
+            <button 
+              class="upgrade-button" 
+              on:click|preventDefault={handleUpgradeClick}
+            >
+              <span>Upgrade to Premium</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      {/if}
 
       <!-- Get Better Matches Section -->
       <div class="matches-section">
@@ -200,12 +383,18 @@
         </div>
       </div>
     </div>
-
-    <div class="footer-wrapper">
-      <Footer />
-    </div>
   </main>
 </div>
+
+<!-- Add the subscription modal -->
+{#if showSubscriptionModal}
+  <SubscriptionModal
+    on:subscribed={() => {
+      showSubscriptionModal = false;
+    }}
+    on:close={() => showSubscriptionModal = false}
+  />
+{/if}
 
 <style>
   .dashboard-layout {
@@ -407,7 +596,7 @@
   }
 
   .footer-wrapper {
-    margin-top: auto;
+    display: none;
   }
 
   @media (max-width: 1400px) {
@@ -573,20 +762,20 @@
 
   .card-content {
     display: flex;
-    align-items: center;
     justify-content: space-between;
+    align-items: center;
     width: 100%;
-    gap: 12px;
   }
 
   .count {
-    background: #F3F4F6;
-    color: #374151;
-    padding: 0.25rem 0.75rem;
-    border-radius: 100px;
-    font-size: 0.875rem;
+    background-color: #6355FF;
+    color: white;
+    border-radius: 9999px;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.75rem;
     font-weight: 600;
-    min-width: fit-content;
+    min-width: 1.5rem;
+    text-align: center;
   }
 
   .welcome-title {
@@ -596,5 +785,93 @@
     margin-bottom: 2rem;
     font-family: 'Plus Jakarta Sans', sans-serif;
     letter-spacing: -0.02em;
+  }
+
+  .upgrade-prompt {
+    background: linear-gradient(145deg, #ffffff 0%, #f8f9ff 100%);
+    border: 1px solid rgba(99, 85, 255, 0.1);
+    box-shadow: 0 4px 24px rgba(99, 85, 255, 0.06);
+  }
+
+  .upgrade-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem;
+  }
+
+  .upgrade-icon {
+    background: rgba(99, 85, 255, 0.08);
+    padding: 1rem;
+    border-radius: 16px;
+    margin-bottom: 1.5rem;
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    width: 100%;
+    margin: 1.5rem 0;
+  }
+
+  .feature-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 8px;
+    border: 1px solid rgba(99, 85, 255, 0.08);
+  }
+
+  .feature-item span {
+    color: #374151;
+    font-size: 0.95rem;
+    font-weight: 500;
+  }
+
+  .upgrade-button {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: #6355FF;
+    color: white;
+    padding: 1rem 2rem;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 1rem;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(99, 85, 255, 0.2);
+  }
+
+  .upgrade-button:hover {
+    background: #5346E8;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(99, 85, 255, 0.3);
+  }
+
+  .upgrade-button svg {
+    transition: transform 0.3s ease;
+  }
+
+  .upgrade-button:hover svg {
+    transform: translateX(4px);
+  }
+
+  @media (max-width: 768px) {
+    .features-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .upgrade-content {
+      padding: 1.5rem;
+    }
+
+    .feature-item {
+      padding: 0.5rem;
+    }
   }
 </style> 

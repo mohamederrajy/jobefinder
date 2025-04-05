@@ -16,7 +16,7 @@
     <div class="feature-content">
       <h2>Let the jobs find you</h2>
       <p>Create your free profile to get interview invites and jobs that work for you.</p>
-      <a href="/get-hired" class="feature-button">Get hired</a>
+      <a href="/dashboard" class="feature-button">Get Started</a>
     </div>
   </div>
 
@@ -24,7 +24,7 @@
     <div class="feature-content">
       <h2>Your job is personal</h2>
       <p>Tell us more about your goals and we'll match you with the right jobs to help you reach them.</p>
-      <a href="/see-jobs" class="feature-button">See jobs</a>
+      <a href="/dashboard" class="feature-button">See jobs</a>
     </div>
     <div class="feature-image">
       <img 
@@ -46,7 +46,7 @@
     <div class="feature-content">
       <h2>Skip the paperwork</h2>
       <p>Your profile is your application. Apply to jobs instantly.</p>
-      <a href="/create-profile" class="feature-button">Create profile</a>
+      <a href="/dashboard/profile " class="feature-button">Create profile</a>
     </div>
   </div>
 
@@ -54,7 +54,7 @@
     <div class="feature-content">
       <h2>Ready to level-up?</h2>
       <p>Excel with our Jobs Hub. Find tips to get ahead and make your goals a reality.</p>
-      <a href="/learn-more" class="feature-button">Learn more</a>
+      <a href="/  dashboard" class="feature-button">Learn more</a>
     </div>
     <div class="feature-image">
       <img 

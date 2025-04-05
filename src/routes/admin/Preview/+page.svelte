@@ -11,6 +11,22 @@
   let saving = false;
   let error: string | null = null;
 
+  // Add colors array for logo placeholders
+  const colors = [
+    '#4F46E5', // Indigo
+    '#0EA5E9', // Sky
+    '#8B5CF6', // Purple
+    '#EC4899', // Pink
+    '#10B981', // Emerald
+    '#F59E0B'  // Amber
+  ];
+
+  // Function to get consistent color for a company
+  function getCompanyColor(company: string): string {
+    const hash = company.split('').reduce((acc, char) => char.charCodeAt(0) + acc, 0);
+    return colors[hash % colors.length];
+  }
+
   onMount(async () => {
     await Promise.all([
       fetchAllJobs(),
@@ -113,10 +129,8 @@
     previewJobs = previewJobs.filter(job => job._id !== jobId);
   }
 
-  // Generate placeholder logo if none exists
+  // Update getLogoPlaceholder to use consistent colors
   function getLogoPlaceholder(company: string): string {
-    const colors = ['#4F46E5', '#0EA5E9', '#8B5CF6', '#EC4899', '#10B981', '#F59E0B'];
-    const color = colors[Math.floor(Math.random() * colors.length)];
     return company.charAt(0).toUpperCase();
   }
 
@@ -158,7 +172,7 @@
                       on:error={(e) => e.currentTarget.style.display = 'none'}
                     />
                   {:else}
-                    <div class="logo-placeholder" style="background: {colors[Math.floor(Math.random() * colors.length)]}">
+                    <div class="logo-placeholder" style="background: {getCompanyColor(job.company)}">
                       {getLogoPlaceholder(job.company)}
                     </div>
                   {/if}
@@ -216,7 +230,7 @@
                       on:error={(e) => e.currentTarget.style.display = 'none'}
                     />
                   {:else}
-                    <div class="logo-placeholder" style="background: {colors[Math.floor(Math.random() * colors.length)]}">
+                    <div class="logo-placeholder" style="background: {getCompanyColor(job.company)}">
                       {getLogoPlaceholder(job.company)}
                     </div>
                   {/if}
@@ -256,74 +270,64 @@
 </div>
 
 <style>
-  .loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 1rem;
-    padding: 2rem;
-  }
-
-  .spinner {
-    width: 24px;
-    height: 24px;
-    border: 3px solid #E5E7EB;
-    border-top-color: #6355FF;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-  }
-
-  .spinner.small {
-    width: 16px;
-    height: 16px;
-    border-width: 2px;
-  }
-
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-
   .preview-page {
     padding: 2rem;
+    max-width: 1440px;
+    margin: 0 auto;
   }
 
   .header {
     margin-bottom: 2rem;
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    border: 1px solid #E5E7EB;
   }
 
   h1 {
     font-size: 2rem;
     color: #111827;
     margin-bottom: 0.5rem;
+    font-weight: 600;
   }
 
   .subtitle {
     color: #6B7280;
+    font-size: 1.125rem;
   }
 
   .preview-container {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1.2fr 0.8fr;
     gap: 2rem;
   }
 
   .jobs-section, .preview-section {
     background: white;
     padding: 1.5rem;
-    border-radius: 12px;
+    border-radius: 16px;
     border: 1px solid #E5E7EB;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   }
 
   h2 {
     font-size: 1.25rem;
-    color: #374151;
+    color: #111827;
     margin-bottom: 1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
 
   .help-text {
     color: #6B7280;
     font-size: 0.875rem;
     margin-bottom: 1rem;
+    padding: 0.75rem;
+    background: #F9FAFB;
+    border-radius: 8px;
+    border: 1px solid #E5E7EB;
   }
 
   .jobs-list {
@@ -331,98 +335,171 @@
     gap: 1rem;
     max-height: 600px;
     overflow-y: auto;
+    padding: 0.5rem;
+    padding-right: 1rem;
+  }
+
+  .jobs-list::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .jobs-list::-webkit-scrollbar-track {
+    background: #F3F4F6;
+    border-radius: 4px;
+  }
+
+  .jobs-list::-webkit-scrollbar-thumb {
+    background: #D1D5DB;
+    border-radius: 4px;
+  }
+
+  .jobs-list::-webkit-scrollbar-thumb:hover {
+    background: #9CA3AF;
   }
 
   .job-card {
-    padding: 1rem;
+    padding: 1.25rem;
     border: 1px solid #E5E7EB;
-    border-radius: 8px;
+    border-radius: 12px;
     cursor: move;
     background: white;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   }
 
   .job-card:hover {
     border-color: #6355FF;
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(99, 85, 255, 0.1);
   }
 
   .preview-list {
     min-height: 200px;
     border: 2px dashed #E5E7EB;
-    border-radius: 8px;
-    padding: 1rem;
-    margin-bottom: 1rem;
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+    background: #F9FAFB;
+    transition: all 0.2s ease;
+  }
+
+  .preview-list:hover {
+    border-color: #6355FF;
+    background: #F5F3FF;
   }
 
   .preview-card {
     position: relative;
-    padding: 1rem;
+    padding: 1.25rem;
     border: 1px solid #E5E7EB;
-    border-radius: 8px;
-    margin-bottom: 0.5rem;
+    border-radius: 12px;
+    margin-bottom: 0.75rem;
     background: white;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  }
+
+  .preview-card:hover {
+    border-color: #6355FF;
+    box-shadow: 0 4px 12px rgba(99, 85, 255, 0.1);
   }
 
   .company {
     color: #6B7280;
     font-size: 0.875rem;
+    margin-top: 0.25rem;
   }
 
   .tags {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
-    margin-top: 0.5rem;
+    margin-top: 0.75rem;
   }
 
   .tag {
-    padding: 0.25rem 0.5rem;
+    padding: 0.375rem 0.75rem;
     background: #F3F4F6;
-    border-radius: 4px;
+    border-radius: 6px;
     font-size: 0.75rem;
     color: #374151;
+    font-weight: 500;
+    transition: all 0.2s ease;
+  }
+
+  .tag:hover {
+    background: #E5E7EB;
   }
 
   .remove-btn {
     position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
-    padding: 0.25rem;
-    background: none;
-    border: none;
-    color: #9CA3AF;
+    top: 0.75rem;
+    right: 0.75rem;
+    padding: 0.375rem;
+    background: #FEF2F2;
+    border: 1px solid #FEE2E2;
+    color: #DC2626;
     cursor: pointer;
-    transition: color 0.2s;
+    transition: all 0.2s ease;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .remove-btn:hover {
-    color: #EF4444;
+    background: #FEE2E2;
+    transform: scale(1.05);
   }
 
   .save-btn {
     width: 100%;
-    padding: 0.75rem;
-    background: #6355FF;
+    padding: 0.875rem;
+    background: linear-gradient(135deg, #6355FF 0%, #5346E0 100%);
     color: white;
     border: none;
-    border-radius: 8px;
-    font-weight: 500;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 1rem;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    box-shadow: 0 4px 12px rgba(99, 85, 255, 0.2);
   }
 
   .save-btn:hover:not(:disabled) {
-    background: #5346E0;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(99, 85, 255, 0.3);
   }
 
   .save-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.7;
     cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  @media (max-width: 1024px) {
+    .preview-container {
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
   }
 
   @media (max-width: 768px) {
-    .preview-container {
-      grid-template-columns: 1fr;
+    .preview-page {
+      padding: 1rem;
+    }
+
+    .header {
+      padding: 1.5rem;
+    }
+
+    h1 {
+      font-size: 1.75rem;
     }
   }
 
@@ -433,12 +510,14 @@
   }
 
   .company-logo {
-    width: 48px;
-    height: 48px;
-    border-radius: 8px;
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
     overflow: hidden;
     background: #F3F4F6;
     flex-shrink: 0;
+    border: 2px solid rgba(0, 0, 0, 0.05);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   }
 
   .company-logo img {
@@ -455,16 +534,28 @@
     justify-content: center;
     color: white;
     font-size: 1.5rem;
-    font-weight: 600;
+    font-weight: 700;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
   }
 
   .job-info {
     flex: 1;
+    min-width: 0;
+  }
+
+  .job-info h3 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #111827;
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .job-details {
     display: flex;
-    gap: 1rem;
+    gap: 1.25rem;
     margin-bottom: 1rem;
     color: #6B7280;
     font-size: 0.875rem;
@@ -480,6 +571,38 @@
     background: #FEF2F2;
     color: #DC2626;
     border: 1px solid #FEE2E2;
-    font-weight: 500;
+    font-weight: 600;
+  }
+
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 3rem;
+    background: white;
+    border-radius: 16px;
+    border: 1px solid #E5E7EB;
+    color: #6B7280;
+    font-size: 1.125rem;
+  }
+
+  .spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid #E5E7EB;
+    border-top-color: #6355FF;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  .spinner.small {
+    width: 18px;
+    height: 18px;
+    border-width: 2px;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 </style>

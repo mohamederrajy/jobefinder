@@ -140,13 +140,7 @@
 </script>
 
 <div class="signup-container">
-  <a href="/" class="logo">
-    <div class="logo-container">
-      <span class="job">Job</span>
-      <span class="separator">|</span>
-      <span class="finder">Finder</span>
-    </div>
-  </a>
+ 
 
   <div class="signup-content">
     <div class="left-section">

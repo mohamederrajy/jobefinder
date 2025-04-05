@@ -27,6 +27,7 @@
       email: string;
     };
     logo?: string;
+    imageUrl?: string;
     about?: string;
     jobUrl?: string;
     contactDetails?: {
@@ -199,48 +200,65 @@
 
   let mounted = false;
   
-  // Watch for subscription changes
-  $: if ($subscription?.subscription?.isPaid && mounted) {
-    fetchJobs(); // Refetch jobs when subscription becomes paid
-  }
+  // Update the subscription status check
+  $: isPremium = $subscription?.isPaid || false;
 
   onMount(() => {
     mounted = true;
-    if ($user?.token) {
-      fetchJobs();
-    }
+    fetchJobs();
   });
 
-  // Modify the fetchJobs function to set the first job ID
+  // Update the fetchJobs function
   async function fetchJobs() {
     try {
       loading = true;
       error = null;
 
-      const endpoint = $subscription?.subscription?.isPaid ? '/jobs' : '/jobs/preview';
+      // Determine which endpoint to use based on subscription status
+      let endpoint = '/jobs/preview';
+      let headers = {
+        'Content-Type': 'application/json'
+      };
+      
+      if ($user?.token) {
+        headers['x-auth-token'] = $user.token;
+        
+        // Check if user has paid subscription
+        if ($subscription?.isPaid) {
+          endpoint = '/jobs';
+        }
+      }
+      
+      console.log('Fetching jobs from:', endpoint, 'isPaid:', $subscription?.isPaid);
       
       const response = await fetch(`${PUBLIC_API_URL}${endpoint}`, {
-        headers: {
-          'x-auth-token': $user.token
-        }
+        method: 'GET',
+        headers
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch jobs');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to fetch jobs');
       }
 
-      allJobs = await response.json();
-      filteredJobs = allJobs;
-      console.log('Loaded jobs:', allJobs.length);
-      
-      // Set the first job ID for preview (if there are jobs and user doesn't have paid subscription)
-      if (allJobs.length > 0 && !$subscription?.subscription?.isPaid) {
-        firstJobId = allJobs[0]._id;
+      const data = await response.json();
+      console.log('Fetched jobs:', data);
+
+      if (Array.isArray(data)) {
+        allJobs = data;
+        filteredJobs = data;
+        
+        // Set the first job ID for preview only if user is not premium
+        if (data.length > 0 && (!$user?.token || !$subscription?.isPaid)) {
+          firstJobId = data[0]._id;
+        }
+      } else {
+        throw new Error('Invalid data format received from server');
       }
 
     } catch (err) {
       console.error('Error fetching jobs:', err);
-      error = 'Failed to load jobs';
+      error = err instanceof Error ? err.message : 'Failed to load jobs. Please try again later.';
       allJobs = [];
       filteredJobs = [];
     } finally {
@@ -338,8 +356,13 @@
     }
   }
 
+  // Update the handleUpgradeClick function to redirect non-logged in users
   function handleUpgradeClick() {
-    if (!$subscription?.subscription?.isPaid) {
+    if (!$user || !$user.token) {
+      // If user is not logged in, redirect to login page
+      goto('/login?source=upgrade');
+    } else {
+      // If user is logged in, show subscription modal
       showSubscriptionModal = true;
     }
   }
@@ -350,7 +373,13 @@
   }
 
   function handleJobClick(jobId: string) {
-    window.location.href = `/dashboard/jobs/${jobId}`;
+    if (!$user || !$user.token) {
+      // If user is not logged in, redirect to login
+      goto('/login?redirect=' + encodeURIComponent(`/jobs/${jobId}`));
+    } else {
+      // If user is logged in, navigate to job details
+      window.location.href = `/dashboard/jobs/${jobId}`;
+    }
   }
 
   // Add this function for generating background color
@@ -381,10 +410,14 @@
     }
   }
 
-  // Modify the job card rendering to check if it's the first job
+  // Update the shouldShowPreview function
   function shouldShowPreview(job: Job): boolean {
-    if ($subscription?.subscription?.isPaid) return false;
-    if (!job._id) return true;
+    // If user has premium subscription, don't show preview
+    if ($subscription?.isPaid) {
+      return false;
+    }
+    
+    // For non-premium users, only show first job without preview
     return job._id !== firstJobId;
   }
 
@@ -409,22 +442,34 @@
     }
   }
 
-  // Add this function to determine if a job should be blurred
+  // Update the shouldBlurJob function
   function shouldBlurJob(job: Job): boolean {
-    // Check if this is a preview job and user doesn't have premium
-    return shouldShowPreview(job) && !($subscription?.subscription?.isPaid);
+    // If user has a paid subscription, don't blur any jobs
+    if ($subscription?.isPaid) {
+      return false;
+    }
+    
+    // For non-premium users, only show the first job without blur
+    return job._id !== firstJobId;
   }
   
-  // Add this function to handle clicks on blurred jobs
+  // Update the handleBlurredJobClick function
   function handleBlurredJobClick(event: MouseEvent) {
     event.preventDefault();
     event.stopPropagation();
-    handleUpgradeClick();
+    
+    if (!$user || !$user.token) {
+      // If user is not logged in, redirect to login page
+      goto('/login?source=job_preview');
+    } else {
+      // If user is logged in but doesn't have subscription, show subscription modal
+      showSubscriptionModal = true;
+    }
   }
 
-  // Add this function to determine if we should show the premium overlay
+  // Update the shouldShowPremiumOverlay function
   function shouldShowPremiumOverlay(): boolean {
-    return !($subscription?.subscription?.isPaid) && filteredJobs.length > 1;
+    return !$subscription?.isPaid && filteredJobs.length > 1;
   }
 
   // Add these variables to the script section
@@ -499,6 +544,21 @@
       setTimeout(updateScrollPosition, 300);
     }
   }
+
+  // Update the job card rendering
+  function renderJob(job) {
+    const isBlurred = !isPremium && job.isUrgent;
+    return {
+      ...job,
+      isBlurred
+    };
+  }
+
+  // Watch for subscription changes
+  $: if ($subscription?.isPaid && mounted) {
+    console.log('Subscription status changed, refetching jobs');
+    fetchJobs(); // Refetch jobs when subscription becomes paid
+  }
 </script>
 
 <svelte:head>
@@ -509,16 +569,34 @@
   {#if loading}
     <div class="loading">
       <div class="loading-spinner"></div>
-      <span>Loading jobs...</span>
+      <div class="loading-text">
+        <span>Loading jobs...</span>
+        <span class="loading-subtext">Please wait while we fetch the latest opportunities</span>
+      </div>
     </div>
   {:else if error}
-    <div class="error">{error}</div>
+    <div class="error">
+      <svg viewBox="0 0 24 24" width="24" height="24" class="error-icon">
+        <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+      </svg>
+      <span>{error}</span>
+      <button class="retry-button" on:click={fetchJobs}>
+        Try Again
+      </button>
+    </div>
   {:else if filteredJobs.length === 0}
     <div class="no-jobs">
+      <svg viewBox="0 0 24 24" width="48" height="48" class="empty-icon">
+        <path fill="#9CA3AF" d="M20 6h-4V4c0-1.11-.89-2-2-2h-4c-1.11 0-2 .89-2 2v2H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-6 0h-4V4h4v2z"/>
+      </svg>
       {#if searchQuery || searchLocation}
-        No jobs found matching your search
+        <p>No jobs found matching your search criteria</p>
+        <button class="clear-search" on:click={() => { searchQuery = ''; searchLocation = ''; }}>
+          Clear Search
+        </button>
       {:else}
-        No jobs available
+        <p>No jobs available at the moment</p>
+        <p class="check-back">Please check back later for new opportunities</p>
       {/if}
     </div>
   {:else}
@@ -526,7 +604,7 @@
       <div class="header-content">
         <h2>Latest Jobs {#if searchQuery || searchLocation}({filteredJobs.length} found){/if}</h2>
         
-        {#if !$subscription?.subscription?.isPaid}
+        {#if !$subscription?.isPaid}
           <button class="upgrade-btn" on:click={handleUpgradeClick}>
             <svg viewBox="0 0 24 24" width="20" height="20">
               <path fill="currentColor" d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 2.18l7 3.12v4.92c0 4.54-3.2 8.79-7 9.78-3.8-.99-7-5.24-7-9.78V6.3l7-3.12z"/>
@@ -585,8 +663,19 @@
               </div>
             </div>
 
+            {#if job.imageUrl}
+              <div class="demo-image-container">
+                <img 
+                  src={job.imageUrl} 
+                  alt="Job demonstration" 
+                  class="demo-image"
+                  loading="lazy"
+                />
+              </div>
+            {/if}
+
             <div class="card-content">
-            <h3 class="job-title">{job.title}</h3>
+              <h3 class="job-title">{job.title}</h3>
               
               <div class="company-info">
                 <span class="company-name">
@@ -658,7 +747,7 @@
             </div>
 
             <!-- Preview Overlay -->
-            {#if !$subscription?.subscription?.isPaid && !job._id}
+            {#if !$subscription?.isPaid && !job._id}
               <div class="preview-overlay">
                 <button class="unlock-button" on:click={handleUpgradeClick}>
                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -670,12 +759,10 @@
               </div>
             {/if}
 
-            <!-- Add upgrade button overlay for blurred cards -->
+            <!-- Update the blurred job card section -->
             {#if shouldBlurJob(job)}
               <div class="blur-overlay">
-                <button class="blur-upgrade-btn" on:click={handleUpgradeClick}>
-                  Upgrade to Premium
-                </button>
+                <!-- Remove the button from here -->
               </div>
             {/if}
           </div>
@@ -709,179 +796,145 @@
 
     <!-- Mobile job slider -->
     <div class="mobile-job-slider">
-      <div class="slider-container" 
-           on:touchstart={handleTouchStart}
-           on:touchmove={handleTouchMove}
-           on:touchend={handleTouchEnd}>
-        {#each filteredJobs as job, i}
-          <div class="slider-slide {i === currentSlide ? 'active' : ''}">
-            <div 
-              class="job-card"
-              on:click={shouldBlurJob(job) ? handleBlurredJobClick : () => handleJobClick(job._id)}
-              class:preview={shouldShowPreview(job)}
-              class:blurred-job-card={shouldBlurJob(job)}
-            >
-              <div class="card-header">
-                <div class="company-logo">
-                  {#if !failedLogos.has(job._id)}
-                    <img
-                      src={job.logo || generateCompanyIcon(job.company)}
-                      alt={`${job.company} logo`}
-                      on:error={(e) => handleImageError(e, job._id)}
-                      loading="lazy"
-                    />
-                  {:else}
-                    <div 
-                      class="company-initials"
-                      style="background-color: {getLogoBackground(job.company)}"
-                    >
-                      {getCompanyInitials(job.company)}
-                    </div>
-                  {/if}
-                </div>
-                <div class="rate-badge">
-                  <span class="currency">$</span>{job.hourlyRate}
-                  <span class="rate-period">/hr</span>
-                </div>
-              </div>
-
-              <div class="card-content">
-                <h3 class="job-title">{job.title}</h3>
-                
-                <div class="company-info">
-                  <span class="company-name">
-                    <svg class="icon" viewBox="0 0 24 24" width="16" height="16">
-                      <path fill="currentColor" d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/>
-                    </svg>
-                    {job.company}
-                  </span>
-                  <div class="location">
-                    <svg viewBox="0 0 24 24" width="16" height="16" class="icon">
-                      <path fill="#6B7280" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-                    </svg>
-                    <span>
-                      {job.address.city}
-                      {#if job.address.state}
-                        , {job.address.state}
-                      {/if}
-                      {#if job.address.zipCode}
-                        <span class="zip-code">{job.address.zipCode}</span>
-                      {/if}
-                    </span>
-                  </div>
-                </div>
-
-                <div class="tags-wrapper">
-                  <div class="tags">
-                    {#if job.isUrgent}
-                      <span class="tag urgent">
-                        <svg class="icon" viewBox="0 0 24 24" width="14" height="14">
-                          <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
-                        </svg>
-                        Urgently hiring
-                      </span>
-                    {/if}
-                    {#each job.tags || [] as tag}
-                      <span 
-                        class="tag" 
-                        style="background-color: {getTagColor(tag).bg}; color: {getTagColor(tag).text};"
-                      >
-                        {formatTag(tag)}
-                      </span>
-                    {/each}
-                  </div>
-                </div>
-              </div>
-
-              <div class="action-row">
-                <button class="apply-button">
-                  <svg class="icon" viewBox="0 0 24 24" width="18" height="18">
-                    <path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-                  </svg>
-                  Easy Apply
-                </button>
-                <button 
-                  class="favorite-button" 
-                  class:active={savedJobs.has(job._id)}
-                  on:click={(e) => toggleSaveJob(job._id, e)}
-                  title={savedJobs.has(job._id) ? "Remove from saved" : "Save job"}
-                >
-                  <svg class="heart-icon" viewBox="0 0 24 24" width="20" height="20">
-                    <path
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      d={savedJobs.has(job._id) 
-                        ? "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-                        : "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-                    }
+      <div class="slider-container">
+        {#each filteredJobs as job}
+          <div class="job-card"
+            on:click={shouldBlurJob(job) ? handleBlurredJobClick : () => handleJobClick(job._id)}
+            class:preview={shouldShowPreview(job)}
+            class:blurred-job-card={shouldBlurJob(job)}
+          >
+            <div class="card-header">
+              <div class="company-logo">
+                {#if !failedLogos.has(job._id)}
+                  <img
+                    src={job.logo || generateCompanyIcon(job.company)}
+                    alt={`${job.company} logo`}
+                    on:error={(e) => handleImageError(e, job._id)}
+                    loading="lazy"
                   />
-                </svg>
-              </button>
+                {:else}
+                  <div 
+                    class="company-initials"
+                    style="background-color: {getLogoBackground(job.company)}"
+                  >
+                    {getCompanyInitials(job.company)}
+                  </div>
+                {/if}
+              </div>
+              <div class="rate-badge">
+                <span class="currency">$</span>{job.hourlyRate}
+                <span class="rate-period">/hr</span>
+              </div>
+            </div>
+
+            {#if job.imageUrl}
+              <div class="demo-image-container">
+                <img 
+                  src={job.imageUrl} 
+                  alt="Job demonstration" 
+                  class="demo-image"
+                  loading="lazy"
+                />
+              </div>
+            {/if}
+
+            <div class="card-content">
+              <h3 class="job-title">{job.title}</h3>
+              
+              <div class="company-info">
+                <span class="company-name">
+                  <svg class="icon" viewBox="0 0 24 24" width="16" height="16">
+                    <path fill="currentColor" d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/>
+                  </svg>
+                  {job.company}
+                </span>
+                <div class="location">
+                  <svg viewBox="0 0 24 24" width="16" height="16" class="icon">
+                    <path fill="#6B7280" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                  </svg>
+                  <span>
+                    {job.address.city}
+                    {#if job.address.state}
+                      , {job.address.state}
+                    {/if}
+                    {#if job.address.zipCode}
+                      <span class="zip-code">{job.address.zipCode}</span>
+                    {/if}
+                  </span>
+                </div>
               </div>
 
-              <!-- Preview Overlay -->
-              {#if !$subscription?.subscription?.isPaid && !job._id}
-                <div class="preview-overlay">
-                  <button class="unlock-button" on:click={handleUpgradeClick}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                    </svg>
-                    Unlock All Jobs
-                  </button>
+              <div class="tags-wrapper">
+                <div class="tags">
+                  {#if job.isUrgent}
+                    <span class="tag urgent">
+                      <svg class="icon" viewBox="0 0 24 24" width="14" height="14">
+                        <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                      </svg>
+                      Urgently hiring
+                    </span>
+                  {/if}
+                  {#each job.tags || [] as tag}
+                    <span 
+                      class="tag" 
+                      style="background-color: {getTagColor(tag).bg}; color: {getTagColor(tag).text};"
+                    >
+                      {formatTag(tag)}
+                    </span>
+                  {/each}
                 </div>
-              {/if}
-
-              <!-- Add upgrade button overlay for blurred cards -->
-              {#if shouldBlurJob(job)}
-                <div class="blur-overlay">
-                  <button class="blur-upgrade-btn" on:click={handleUpgradeClick}>
-                    Upgrade to Premium
-                  </button>
-                </div>
-              {/if}
+              </div>
             </div>
+
+            <div class="action-row">
+              <button class="apply-button">
+                <svg class="icon" viewBox="0 0 24 24" width="18" height="18">
+                  <path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+                </svg>
+                Easy Apply
+              </button>
+              <button 
+                class="favorite-button" 
+                class:active={savedJobs.has(job._id)}
+                on:click={(e) => toggleSaveJob(job._id, e)}
+                title={savedJobs.has(job._id) ? "Remove from saved" : "Save job"}
+              >
+                <svg class="heart-icon" viewBox="0 0 24 24" width="20" height="20">
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    d={savedJobs.has(job._id) 
+                      ? "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+                      : "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+                  }
+                />
+              </svg>
+            </button>
+            </div>
+
+            <!-- Preview Overlay -->
+            {#if !$subscription?.isPaid && !job._id}
+              <div class="preview-overlay">
+                <button class="unlock-button" on:click={handleUpgradeClick}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                  </svg>
+                  Unlock All Jobs
+                </button>
+              </div>
+            {/if}
+
+            <!-- Blur Overlay -->
+            {#if shouldBlurJob(job)}
+              <div class="blur-overlay">
+                <!-- Remove the button from here -->
+              </div>
+            {/if}
           </div>
         {/each}
       </div>
-      
-      <!-- Mobile slider controls -->
-      {#if filteredJobs.length > 1}
-        <div class="slider-controls">
-          <button 
-            class="slider-arrow" 
-            on:click={prevSlide} 
-            disabled={currentSlide === 0}
-            aria-label="Previous job"
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18">
-              <path fill="currentColor" d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
-            </svg>
-          </button>
-          
-          <div class="slider-dots">
-            {#each filteredJobs as _, i}
-              <button 
-                class="slider-dot {i === currentSlide ? 'active' : ''}" 
-                on:click={() => goToSlide(i)}
-                aria-label="Go to slide {i + 1}"
-              ></button>
-            {/each}
-          </div>
-          
-          <button 
-            class="slider-arrow" 
-            on:click={nextSlide} 
-            disabled={currentSlide === filteredJobs.length - 1}
-            aria-label="Next job"
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18">
-              <path fill="currentColor" d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
-            </svg>
-          </button>
-        </div>
-      {/if}
     </div>
   {/if}
 
@@ -902,6 +955,18 @@
       on:close={() => showEditModal = false} 
     />
   {/if}
+
+  <!-- Add this container for the single centered upgrade button -->
+  {#if shouldShowPremiumOverlay()}
+    <div class="center-upgrade-button-container">
+      <button class="center-upgrade-button" on:click={handleUpgradeClick}>
+        <svg viewBox="0 0 24 24" width="20" height="20">
+          <path fill="currentColor" d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 2.18l7 3.12v4.92c0 4.54-3.2 8.79-7 9.78-3.8-.99-7-5.24-7-9.78V6.3l7-3.12z"/>
+        </svg>
+        Upgrade to Premium
+      </button>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -909,6 +974,7 @@
     max-width: 1440px;
     margin: 0 auto;
     padding: 24px;
+    position: relative;
   }
 
   .jobs-header {
@@ -987,125 +1053,239 @@
     min-width: 300px;
     max-width: 350px;
     background: white;
-    border-radius: 20px;
-    padding: 24px;
+    border-radius: 24px;
+    padding: 0;
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 
-                0 4px 6px rgba(0, 0, 0, 0.02);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
     transition: all 0.3s ease;
-    border: 1px solid #E5E7EB;
-    cursor: pointer;
+    border: 1px solid rgba(0,0,0,0.06);
+    overflow: hidden;
   }
 
   .job-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
-    border-color: #D1D5DB;
+    transform: translateY(-4px);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+    border-color: rgba(0,0,0,0.12);
+  }
+
+  .demo-image-container {
+    width: 100%;
+    height: 240px;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.02), rgba(0,0,0,0.05));
+  }
+
+  .demo-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: all 0.3s ease;
+  }
+
+  .job-card:hover .demo-image {
+    transform: scale(1.05);
   }
 
   .card-header {
     display: flex;
-    align-items: flex-start;
-    gap: 20px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid #E5E7EB;
+    align-items: center;
+    justify-content: space-between;
+    padding: 24px;
+    background: linear-gradient(to bottom, rgba(255,255,255,0.95), rgba(255,255,255,0.98));
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+    position: relative;
+    z-index: 3;
   }
 
-  .header-content {
-    flex: 1;
-  }
-
-  .job-title {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: #111827;
-    margin-bottom: 8px;
-    line-height: 1.4;
-    letter-spacing: -0.01em;
-  }
-
-  .company-info {
-    padding: 20px 0;
-    border-bottom: 1px solid #E5E7EB;
-  }
-
-  .company-name {
-    font-size: 1rem;
-    font-weight: 600;
-    color: #4B5563;
-    margin-bottom: 12px;
-  }
-
-  .meta-info {
+  .company-logo {
+    width: 64px;
+    height: 64px;
+    border-radius: 20px;
+    overflow: hidden;
     display: flex;
     align-items: center;
-    gap: 24px;
-    margin-bottom: 8px;
+    justify-content: center;
+    background: white;
+    border: 2px solid rgba(0,0,0,0.04);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease;
+    position: relative;
   }
 
-  .meta-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: #6B7280;
-    font-size: 0.875rem;
+  .company-logo::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 20px;
+    background: linear-gradient(45deg, rgba(255,255,255,0.1), rgba(255,255,255,0.3));
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .job-card:hover .company-logo::after {
+    opacity: 1;
+  }
+
+  .company-logo img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 10px;
+    transition: transform 0.3s ease;
+  }
+
+  .job-card:hover .company-logo img {
+    transform: scale(1.05);
   }
 
   .rate-badge {
     display: inline-flex;
     align-items: center;
-    background: #F0FDF4;
-    color: #059669;
-    padding: 6px 12px;
+    gap: 2px;
+    background: white;
+    color: #111827;
+    padding: 10px 20px;
     border-radius: 100px;
     font-weight: 600;
-    font-size: 0.875rem;
-    border: 1px solid #D1FAE5;
+    font-size: 0.9375rem;
+    border: 1px solid #E5E7EB;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
   }
 
-  .currency {
-    color: #64748B;
-    font-weight: 600;
-    font-size: 15px;
+  .rate-badge::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(0, 0, 0, 0.05),
+      transparent
+    );
+    transition: 0.5s;
   }
 
-  .rate-period {
-    color: #64748B;
+  .job-card:hover .rate-badge {
+    border-color: #D1D5DB;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+    transform: translateY(-1px);
+  }
+
+  .job-card:hover .rate-badge::before {
+    left: 100%;
+  }
+
+  .rate-badge .currency {
     font-weight: 500;
-    font-size: 14px;
+    opacity: 0.9;
+    margin-right: 1px;
+  }
+
+  .rate-badge .rate-period {
+    font-weight: 500;
+    opacity: 0.9;
+    margin-left: 1px;
+  }
+
+  .company-initials {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%);
+  }
+
+  .card-content {
+    padding: 28px;
+    background: white;
+    position: relative;
+    z-index: 2;
+    margin-top: -24px;
+    border-radius: 24px 24px 0 0;
+    border-top: 1px solid rgba(0,0,0,0.04);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.03);
+  }
+
+  .job-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #111827;
+    margin: 0;
+    line-height: 1.3;
+    letter-spacing: -0.02em;
+    margin-bottom: 16px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    height: calc(1.5rem * 1.3 * 2);
+  }
+
+  .company-info {
+    padding: 20px 0;
+    margin: 0 -4px;
+    border-top: 1px solid rgba(0,0,0,0.06);
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .company-name {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #374151;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 4px;
+  }
+
+  .company-name:hover {
+    color: #2563EB;
+  }
+
+  .company-name .icon {
+    color: #6B7280;
   }
 
   .location {
     display: flex;
     align-items: center;
     gap: 8px;
-    color: #6B7280;
-    font-size: 14px;
-    font-weight: 500;
-    font-family: 'Inter', -apple-system, system-ui, sans-serif;
-    margin-top: 4px;
+    color: #4B5563;
+    font-size: 0.9375rem;
+    padding: 0 4px;
   }
 
-  .distance {
-    color: #111827;
-    font-weight: 500;
-    margin-left: auto;
+  .location .icon {
+    color: #6B7280;
+    flex-shrink: 0;
   }
 
   .tags-wrapper {
-    margin: 12px 0;
-    min-height: 32px;
-    overflow-x: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-    padding: 4px 0;
-  }
-
-  .tags-wrapper::-webkit-scrollbar {
-    display: none;
+    margin: 20px -4px 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 4px;
   }
 
   .tags {
@@ -1115,282 +1295,150 @@
   }
 
   .tag {
-    background: #F3F4F6;
-    color: #4B5563;
     padding: 6px 12px;
     border-radius: 100px;
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     font-weight: 500;
-    border: 1px solid #E5E7EB;
+    transition: all 0.2s ease;
+    border: 1px solid rgba(0,0,0,0.08);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: white;
+  }
+
+  .tag:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    border-color: rgba(0,0,0,0.12);
   }
 
   .tag.urgent {
-    background: #FEF2F2;
+    background: linear-gradient(to right, #FEF2F2, #FEE2E2);
     color: #DC2626;
-    border-color: #FEE2E2;
+    border-color: #FECACA;
     font-weight: 600;
+  }
+
+  .tag.urgent:hover {
+    background: linear-gradient(to right, #FEE2E2, #FECACA);
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.1);
   }
 
   .action-row {
-    display: flex;
-    gap: 12px;
+    padding: 16px 20px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 16px;
+    background: linear-gradient(to bottom, #F9FAFB, #F3F4F6);
+    border-top: 1px solid rgba(0,0,0,0.06);
     margin-top: auto;
-    padding-top: 16px;
-    border-top: 1px solid #F3F4F6;
   }
 
   .apply-button {
-    flex: 1;
-    padding: 14px 24px;
-    background: linear-gradient(135deg, #4F46E5 0%, #6355FF 100%);
+    padding: 12px 24px;
+    background: linear-gradient(135deg, #2563EB, #4F46E5);
     color: white;
     border: none;
     border-radius: 100px;
-    font-size: 15px;
     font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s ease;
+    font-size: 0.875rem;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
+    transition: all 0.3s ease;
     box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
   }
 
   .apply-button:hover {
-    transform: translateY(-1px);
+    transform: translateY(-2px);
     box-shadow: 0 6px 16px rgba(79, 70, 229, 0.3);
-    background: linear-gradient(135deg, #4338CA 0%, #5145E6 100%);
+    background: linear-gradient(135deg, #1D4ED8, #4338CA);
   }
 
   .favorite-button {
-    background: none;
-    border: none;
-    padding: 0.25rem;
-    cursor: pointer;
-    color: #D1D5DB;
-    transition: color 0.2s ease;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
+    background: white;
+    border: 1px solid rgba(0,0,0,0.1);
+    color: #6B7280;
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
   }
 
   .favorite-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border-color: rgba(236, 72, 153, 0.3);
     color: #EC4899;
   }
 
   .favorite-button.active {
+    background: #FDF2F8;
     color: #EC4899;
+    border-color: #EC4899;
   }
 
-  .favorite-button.active path {
-    fill: currentColor;
-  }
-
-  .heart-icon {
-    width: 20px;
-    height: 20px;
-  }
-
-  /* Update responsive styles */
   @media (max-width: 768px) {
-    .jobs-header {
-      flex-direction: column;
-      align-items: stretch;
+    .demo-image-container {
+      height: 200px;
     }
 
-    .header-content {
-      width: auto;
+    .card-header {
+      padding: 20px;
     }
 
-    .scroll-buttons {
-      align-self: center;
-      margin-top: 1rem;
+    .company-logo {
+      width: 56px;
+      height: 56px;
+      border-radius: 16px;
     }
 
-    .upgrade-btn {
-      width: 100%;
-      justify-content: center;
+    .rate-badge {
+      padding: 8px 16px;
+      font-size: 0.875rem;
     }
 
-    .jobs-container {
-      padding: 16px;
+    .card-content {
+      padding: 24px;
+      margin-top: -20px;
     }
 
-    .jobs-grid {
-      display: block; /* Change from flex to block */
-      overflow: visible;
-      padding-bottom: 40px; /* Space for pagination dots */
+    .job-title {
+      font-size: 1.25rem;
+      height: calc(1.25rem * 1.3 * 2);
     }
-    
-    .job-card {
-      width: 100%;
-      min-width: 100%;
-      margin: 0 auto;
-      flex: none;
-      display: none; /* Hide all cards by default */
+
+    .company-info {
+      padding: 16px 0;
+      gap: 10px;
     }
-    
-    .job-card.active {
-      display: block; /* Only show the active card */
+
+    .company-name {
+      font-size: 1rem;
     }
-    
-    /* Improve slider controls */
-    .slider-controls {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      margin-top: 24px;
-      gap: 16px;
-      position: relative;
-      z-index: 20;
+
+    .location {
+      font-size: 0.875rem;
     }
-    
-    .slider-arrow {
-      background: white;
-      border: 1px solid #E5E7EB;
-      color: #6B7280;
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-      transition: all 0.2s ease;
+
+    .tags-wrapper {
+      margin: 16px -2px 0;
     }
-    
-    .slider-arrow:hover:not(:disabled) {
-      background: #F9FAFB;
-      color: #4B5563;
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    }
-    
-    .slider-arrow:active:not(:disabled) {
-      transform: translateY(0);
-    }
-    
-    .slider-arrow:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-    
-    .slider-dots {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-    
-    .slider-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #E5E7EB;
-      border: none;
-      padding: 0;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-    
-    .slider-dot.active {
-      background: #6355FF;
-      width: 24px;
-      border-radius: 4px;
-    }
-    
-    /* Hide the duplicate controls */
-    .mobile-controls-top {
-      display: none;
-    }
-    
-    /* Job counter for better navigation */
-    .job-counter {
-      position: absolute;
-      top: -40px;
-      right: 16px;
-      background: rgba(255, 255, 255, 0.9);
-      padding: 4px 12px;
-      border-radius: 100px;
-      font-size: 0.8rem;
-      color: #4B5563;
-      font-weight: 500;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
-    }
-    
-    /* Improve swipe experience */
-    .jobs-grid {
-      touch-action: pan-y;
-      position: relative;
-    }
-    
-    /* Add swipe hint animation */
-    .swipe-hint {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: rgba(255, 255, 255, 0.9);
-      padding: 12px 20px;
-      border-radius: 100px;
-      font-size: 0.9rem;
-      color: #4B5563;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-      pointer-events: none;
-      animation: fadeOut 3s forwards;
-      z-index: 30;
-    }
-    
-    @keyframes fadeOut {
-      0% { opacity: 1; }
-      70% { opacity: 1; }
-      100% { opacity: 0; }
-    }
-    
-    .swipe-icon {
-      animation: swipeAnimation 1.5s infinite;
-    }
-    
-    @keyframes swipeAnimation {
-      0% { transform: translateX(0); }
-      50% { transform: translateX(6px); }
-      100% { transform: translateX(0); }
-    }
-  }
-  
-  @media (max-width: 480px) {
-    .slider-arrow {
-    width: 40px;
-    height: 40px;
-    }
-    
-    .slider-arrow svg {
-      width: 18px;
-      height: 18px;
-    }
-    
-    .slider-dot {
-      width: 6px;
-      height: 6px;
-    }
-    
-    .slider-dot.active {
-      width: 20px;
-    }
-    
-    .job-counter {
-      font-size: 0.75rem;
-      padding: 3px 10px;
+
+    .action-row {
+      padding: 16px 24px;
+      gap: 12px;
     }
   }
 
   .preview {
-    filter: blur(2px);
+    filter: blur(0px);
   }
 
   .preview-overlay {
@@ -1428,13 +1476,27 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 12px;
-    padding: 40px;
+    gap: 16px;
+    padding: 48px;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  .loading-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .loading-subtext {
+    font-size: 0.875rem;
+    color: #6B7280;
   }
 
   .loading-spinner {
-    width: 24px;
-    height: 24px;
+    width: 32px;
+    height: 32px;
     border: 3px solid #f3f3f3;
     border-top: 3px solid #6355FF;
     border-radius: 50%;
@@ -1446,60 +1508,70 @@
   }
 
   .error {
-    color: #dc2626;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 48px;
     text-align: center;
-    padding: 20px;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  .error-icon {
+    color: #DC2626;
+  }
+
+  .retry-button {
+    padding: 8px 16px;
+    background: #EEF2FF;
+    color: #4F46E5;
+    border: none;
+    border-radius: 8px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .retry-button:hover {
+    background: #E0E7FF;
   }
 
   .no-jobs {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 48px;
     text-align: center;
-    padding: 40px;
-    color: #6b7280;
-  }
-
-  :global(body) {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-  }
-
-  /* Update company logo styles */
-  .company-logo {
-    width: 52px;
-    height: 52px;
-    border-radius: 16px;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #f3f4f6;
-    border: 1px solid #E5E7EB;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  }
-
-  .company-logo img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
     background: white;
-    transition: all 0.2s ease;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   }
 
-  .company-initials {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 1.25rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
+  .empty-icon {
+    margin-bottom: 8px;
   }
 
-  .zip-code {
-    color: #4B5563;
-    margin-left: 4px;
+  .check-back {
+    color: #6B7280;
+    font-size: 0.875rem;
+  }
+
+  .clear-search {
+    padding: 8px 16px;
+    background: #F3F4F6;
+    color: #374151;
+    border: none;
+    border-radius: 8px;
     font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .clear-search:hover {
+    background: #E5E7EB;
   }
 
   .upgrade-btn {
@@ -1531,180 +1603,76 @@
     letter-spacing: 0.05em;
   }
 
-  /* Professional card internal styling */
-  .job-card {
-    padding: 24px;
-  }
-
-  /* Card sections with borders */
-  .card-header {
-    display: flex;
-    align-items: flex-start;
-    gap: 20px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid #E5E7EB;
-  }
-
-  .header-content {
-    flex: 1;
-  }
-
-  .job-title {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: #111827;
-    margin-bottom: 8px;
-    line-height: 1.4;
-    letter-spacing: -0.01em;
-  }
-
-  .company-info {
-    padding: 20px 0;
-    border-bottom: 1px solid #E5E7EB;
-  }
-
-  .company-name {
-    font-size: 1rem;
-    font-weight: 600;
-    color: #4B5563;
-    margin-bottom: 12px;
-  }
-
-  .meta-info {
-    display: flex;
-    align-items: center;
-    gap: 24px;
-    margin-bottom: 8px;
-  }
-
-  .meta-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: #6B7280;
-    font-size: 0.875rem;
-  }
-
-  .rate-badge {
-    display: inline-flex;
-    align-items: center;
-    background: #F0FDF4;
-    color: #059669;
-    padding: 6px 12px;
-    border-radius: 100px;
-    font-weight: 600;
-    font-size: 0.875rem;
-    border: 1px solid #D1FAE5;
-  }
-
-  /* Tags section */
-  .tags-section {
-    padding: 20px 0;
-    border-bottom: 1px solid #E5E7EB;
-  }
-
-  .tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .tag {
-    background: #F3F4F6;
-    color: #4B5563;
-    padding: 6px 12px;
-    border-radius: 100px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    border: 1px solid #E5E7EB;
-  }
-
-  .tag.urgent {
-    background: #FEF2F2;
-    color: #DC2626;
-    border-color: #FEE2E2;
-    font-weight: 600;
-  }
-
-  /* Footer section */
-  .card-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding-top: 20px;
-    margin-top: 20px;
-    border-top: 1px solid #E5E7EB;
-  }
-
-  .posted-date {
-    color: #6B7280;
-    font-size: 0.875rem;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  /* Enhance typography */
-  .job-card * {
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-
-  /* Add these styles for enhanced blur effect */
   .blurred-job-card {
     position: relative;
+  }
+  
+  .blurred-job-card .card-header {
+    filter: blur(0px) !important;
+    opacity: 1 !important;
+    position: relative;
+    z-index: 10;
+    background: white;
+    isolation: isolate;
+  }
+  
+  .blurred-job-card .company-logo,
+  .blurred-job-card .rate-badge {
+    filter: blur(0px) !important;
+    opacity: 1 !important;
+    position: relative;
+    z-index: 10;
+    isolation: isolate;
+  }
+  
+  .blurred-job-card .rate-badge {
+    background: white;
+    border: 1px solid #E5E7EB;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    color: #111827;
+  }
+  
+  .blurred-job-card:hover .rate-badge {
+    border-color: #D1D5DB;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+  }
+  
+  .blurred-job-card .company-logo img {
+    filter: blur(0px) !important;
+    opacity: 1 !important;
+  }
+  
+  .blurred-job-card .demo-image-container,
+  .blurred-job-card .card-content,
+  .blurred-job-card .action-row {
     filter: blur(8px);
     opacity: 0.6;
-    pointer-events: none;
   }
   
   .blur-overlay {
     position: absolute;
     inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     background: rgba(255, 255, 255, 0.3);
-    z-index: 10;
-    pointer-events: auto;
-  }
-  
-  .blur-upgrade-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.75rem 1.5rem;
-    background: linear-gradient(135deg, #6355FF 0%, #5346E0 100%);
-    color: white;
-    border: none;
-    border-radius: 100px;
-    font-weight: 600;
-    font-size: 1rem;
-    cursor: pointer;
-    box-shadow: 0 4px 12px rgba(99, 85, 255, 0.4);
-    z-index: 20;
-  }
-
-  /* Add these styles for the centered upgrade button */
-  .jobs-container {
-    position: relative;
+    z-index: 1;
+    pointer-events: none;
+    margin-top: 92px;
   }
   
   .center-upgrade-button-container {
     position: absolute;
-    top: 400px; /* Position after the first job card on desktop */
+    top: 50%;
     left: 50%;
-    transform: translateX(-50%);
+    transform: translate(-50%, -50%);
     z-index: 100;
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: 90%; /* Limit width on larger screens */
-    max-width: 320px;
+    justify-content: center;
+    width: 100%;
+    pointer-events: none;
   }
   
   .center-upgrade-button {
-    display: flex;
+    pointer-events: auto;
+    display: inline-flex;
     align-items: center;
     gap: 0.75rem;
     padding: 0.875rem 1.75rem;
@@ -1718,8 +1686,6 @@
     box-shadow: 0 8px 16px rgba(99, 85, 255, 0.3);
     transition: all 0.2s ease;
     white-space: nowrap;
-    width: 100%;
-    justify-content: center;
   }
   
   .center-upgrade-button:hover {
@@ -1731,64 +1697,7 @@
     transform: translateY(0);
     box-shadow: 0 6px 12px rgba(99, 85, 255, 0.3);
   }
-  
-  .upgrade-message {
-    margin-top: 0.75rem;
-    color: #4B5563;
-    font-size: 0.875rem;
-    font-weight: 500;
-    background: white;
-    padding: 0.5rem 1rem;
-    border-radius: 100px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    text-align: center;
-    width: 100%;
-  }
-  
-  /* Media queries for responsive design */
-  @media (max-width: 768px) {
-    .center-upgrade-button-container {
-      top: auto;
-      bottom: 20px;
-      z-index: 50;
-    }
-    
-    .center-upgrade-button {
-      padding: 0.75rem 1.5rem;
-      font-size: 0.9rem;
-    }
-    
-    .upgrade-message {
-      font-size: 0.8rem;
-      padding: 0.4rem 0.8rem;
-    }
-  }
-  
-  @media (max-width: 480px) {
-    .center-upgrade-button-container {
-      top: 280px; /* Further adjust for smaller screens */
-      width: 90%;
-      max-width: 240px;
-    }
-    
-    .center-upgrade-button {
-      padding: 0.625rem 1.25rem;
-      font-size: 0.85rem;
-      gap: 0.5rem;
-    }
-    
-    .center-upgrade-button svg {
-      width: 18px;
-      height: 18px;
-    }
-    
-    .upgrade-message {
-      margin-top: 0.5rem;
-      font-size: 0.75rem;
-    }
-  }
 
-  /* Desktop job list styles */
   .desktop-job-list {
     display: flex;
     flex-direction: column;
@@ -1801,13 +1710,13 @@
     overflow-x: auto;
     scroll-behavior: smooth;
     padding: 1rem 0;
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     gap: 1rem;
   }
   
   .job-list-container::-webkit-scrollbar {
-    display: none; /* Chrome, Safari, Opera */
+    display: none;
   }
   
   .desktop-scroll-controls {
@@ -1850,7 +1759,6 @@
     box-shadow: none;
   }
 
-  /* Mobile slider styles - updated */
   .mobile-job-slider {
     width: 100%;
     position: relative;
@@ -1876,7 +1784,6 @@
     display: none;
   }
   
-  /* Make sure job cards in mobile view are properly styled */
   .mobile-job-slider .job-card {
     width: 100%;
     max-width: 100%;
@@ -1884,51 +1791,46 @@
     display: block;
   }
 
-  /* Media queries to show/hide appropriate controls */
   @media (min-width: 769px) {
     .mobile-job-slider {
-      display: none; /* Hide mobile slider on desktop */
+      display: none;
     }
     
     .desktop-job-list {
-      display: flex; /* Show desktop job list on desktop */
+      display: flex;
     }
     
     .desktop-scroll-controls {
-      display: flex; /* Show desktop scroll controls on desktop */
+      display: flex;
     }
   }
   
   @media (max-width: 768px) {
     .desktop-job-list {
-      display: none; /* Hide desktop job list on mobile */
+      display: none;
     }
     
     .mobile-job-slider {
-      display: block; /* Show mobile slider on mobile */
+      display: block;
     }
     
     .desktop-scroll-controls {
-      display: none !important; /* Hide desktop scroll controls on mobile */
+      display: none !important;
     }
     
-    /* Hide the scroll buttons in the header on mobile */
     .jobs-header .scroll-buttons {
       display: none !important;
     }
 
-    /* Add momentum scrolling for iOS */
     .slider-container {
       -webkit-overflow-scrolling: touch;
     }
     
-    /* Make slider controls more touch-friendly */
     .slider-arrow {
       width: 44px;
       height: 44px;
     }
     
-    /* Add visual feedback for touch */
     .job-card:active {
       transform: scale(0.98);
     }

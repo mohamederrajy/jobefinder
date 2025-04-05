@@ -40,6 +40,11 @@
   let previewLogo: string | null = null;
   let logoFile: File | null = null;
 
+  // Add demo image variables
+  let demoImageInput: HTMLInputElement;
+  let previewDemoImage: string | null = null;
+  let demoImageFile: File | null = null;
+
   // Initialize editor on mount
   import { onMount, onDestroy } from 'svelte';
 
@@ -116,6 +121,21 @@
     if (logoInput) logoInput.value = '';
   }
 
+  // Add demo image handling functions
+  function handleDemoImageChange(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files[0]) {
+      demoImageFile = input.files[0];
+      previewDemoImage = URL.createObjectURL(input.files[0]);
+    }
+  }
+
+  function removeDemoImage() {
+    previewDemoImage = null;
+    demoImageFile = null;
+    if (demoImageInput) demoImageInput.value = '';
+  }
+
   async function handleSubmit() {
     try {
       loading = true;
@@ -139,6 +159,11 @@
       // Add logo if exists
       if (logoFile) {
         formData.append('logo', logoFile);
+      }
+
+      // Add demo image if exists
+      if (demoImageFile) {
+        formData.append('demoImage', demoImageFile);
       }
 
       const response = await fetch(`${PUBLIC_API_URL}/jobs`, {
@@ -399,6 +424,38 @@
             />
           </div>
           <p class="helper-text">Recommended: Square image, at least 200x200px</p>
+        </div>
+
+        <div class="form-group">
+          <label for="demo-image">Demo Image</label>
+          <div class="demo-image-upload-container">
+            {#if previewDemoImage}
+              <div class="demo-image-preview">
+                <img src={previewDemoImage} alt="Demo image preview" />
+                <button type="button" class="remove-demo" on:click={removeDemoImage}>
+                  <svg viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                  </svg>
+                </button>
+              </div>
+            {:else}
+              <div class="upload-placeholder" on:click={() => demoImageInput?.click()}>
+                <svg viewBox="0 0 24 24" width="24" height="24">
+                  <path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                </svg>
+                <span>Upload Demo Image</span>
+              </div>
+            {/if}
+            <input 
+              type="file"
+              id="demo-image"
+              accept="image/*"
+              bind:this={demoImageInput}
+              on:change={handleDemoImageChange}
+              style="display: none;"
+            />
+          </div>
+          <p class="helper-text">Recommended: 16:9 aspect ratio, at least 1280x720px</p>
         </div>
 
         <div class="form-group tags-group">
@@ -999,5 +1056,68 @@
   .remove-logo:hover {
     background: #B91C1C;
     transform: scale(1.1);
+  }
+
+  .demo-image-upload-container {
+    margin-top: 0.5rem;
+  }
+
+  .demo-image-preview {
+    position: relative;
+    width: 280px;
+    height: 158px; /* 16:9 aspect ratio */
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .demo-image-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 12px;
+  }
+
+  .remove-demo {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #DC2626;
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+
+  .remove-demo:hover {
+    background: #B91C1C;
+    transform: scale(1.1);
+  }
+
+  /* Update upload placeholder for demo image */
+  .demo-image-upload-container .upload-placeholder {
+    width: 280px;
+    height: 158px;
+    border: 2px dashed #E5E7EB;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: #6B7280;
+  }
+
+  .demo-image-upload-container .upload-placeholder:hover {
+    border-color: #6355FF;
+    color: #6355FF;
+    background: rgba(99, 85, 255, 0.05);
   }
 </style> 

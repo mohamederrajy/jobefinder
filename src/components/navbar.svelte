@@ -1,5 +1,6 @@
-<script>
+<script lang="ts">
   import { APP_NAME } from '$lib/config';
+  import { subscription } from '../stores/subscriptionStore';
 </script>
 
 <nav>
@@ -17,6 +18,17 @@
         <a href="/signup" class="signup-btn">Sign up</a>
       </div>
     </div>
+
+    {#if $subscription.isPaid}
+      <div class="subscription-status premium">
+        <span class="plan-badge">{$subscription.plan}</span>
+        <span class="status">Premium Active</span>
+      </div>
+    {:else}
+      <a href="/pricing" class="upgrade-btn">
+        Upgrade to Premium
+      </a>
+    {/if}
   </div>
 </nav>
 
@@ -87,6 +99,38 @@
 
     .nav-links {
       gap: 1rem;
+    }
+  }
+
+  .subscription-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    
+    &.premium {
+      color: #059669;
+    }
+  }
+
+  .plan-badge {
+    padding: 0.25rem 0.5rem;
+    background: #F0FDF4;
+    border-radius: 100px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: capitalize;
+  }
+
+  .upgrade-btn {
+    padding: 0.5rem 1rem;
+    background: #6355FF;
+    color: white;
+    border-radius: 6px;
+    font-weight: 500;
+    text-decoration: none;
+    
+    &:hover {
+      background: #5346E0;
     }
   }
 </style> 
