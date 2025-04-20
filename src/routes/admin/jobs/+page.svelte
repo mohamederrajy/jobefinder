@@ -4,6 +4,7 @@
   import { user } from '../../../stores/userStore';
   import { goto } from '$app/navigation';
   import EditJobModal from '../../../components/modals/EditJobModal.svelte';
+  import AddJobModal from '../../../components/modals/AddJobModal.svelte';
 
   const API_URL = 'http://localhost:5001'; // Match your backend port
   const DEFAULT_LOGO = '/images/default-logo.png'; // Make sure this file exists in static/images/
@@ -43,6 +44,7 @@
   let editingJob: Job | null = null;
   let failedLogos = new Set<string>();
   let defaultLogoFailed = false;
+  let showAddModal = false;
 
   async function fetchJobs() {
     try {
@@ -182,17 +184,24 @@
         job.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
       )
     : jobs;
+
+  function handleJobCreated(event: CustomEvent) {
+    const newJob = event.detail;
+    jobs = [newJob, ...jobs];
+    showAddModal = false;
+    fetchJobs();
+  }
 </script>
 
 <div class="jobs-page">
   <div class="page-header">
     <h1>Manage Jobs</h1>
-    <a href="/admin/add-job" class="add-job-btn">
+    <button class="add-job-btn" on:click={() => showAddModal = true}>
       <svg viewBox="0 0 24 24" width="20" height="20">
         <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
       </svg>
       Add New Job
-    </a>
+    </button>
   </div>
 
   <div class="filters">
@@ -331,6 +340,13 @@
       job={editingJob}
       on:jobUpdated={handleJobUpdated}
       on:close={() => editingJob = null}
+    />
+  {/if}
+
+  {#if showAddModal}
+    <AddJobModal 
+      on:jobCreated={handleJobCreated}
+      on:close={() => showAddModal = false}
     />
   {/if}
 </div>
@@ -479,9 +495,10 @@
     color: white;
     padding: 0.75rem 1.5rem;
     border-radius: 50px;
-    text-decoration: none;
     font-weight: 500;
     transition: all 0.2s;
+    border: none;
+    cursor: pointer;
   }
 
   .add-job-btn:hover {
