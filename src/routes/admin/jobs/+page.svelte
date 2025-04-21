@@ -185,11 +185,20 @@
       )
     : jobs;
 
-  function handleJobCreated(event: CustomEvent) {
-    const newJob = event.detail;
-    jobs = [newJob, ...jobs];
-    showAddModal = false;
-    fetchJobs();
+  async function handleJobCreated(event: CustomEvent) {
+    try {
+      const newJob = event.detail;
+      if (!newJob) {
+        console.error('No job data received');
+        return;
+      }
+      
+      jobs = [newJob, ...jobs];
+      showAddModal = false;
+      await fetchJobs(); // Refresh the jobs list
+    } catch (err) {
+      console.error('Error handling new job:', err);
+    }
   }
 </script>
 

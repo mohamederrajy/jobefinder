@@ -56,35 +56,26 @@
       
       const userData = await response.json();
       
-      // Use the login function from userStore
-      login({
+      // Set user data in store with all required fields
+      user.set({
         id: userData.user._id,
         email: userData.user.email,
+        name: userData.user.name || email.split('@')[0],
+        isAdmin: userData.user.role === 'admin',
         token: userData.token,
         role: userData.user.role,
         profile: userData.user.profile || {},
         subscription: userData.user.subscription || { isPaid: false, plan: 'free' }
       });
-      
-      // Redirect admin users to admin dashboard
+
+      // Redirect based on user role
       if (userData.user.role === 'admin') {
         await goto('/admin');
       } else {
-        // Redirect regular users to dashboard or specified redirect URL
         await goto(redirectTo);
       }
-      
-      // After successful login and setting user store
-      await subscription.checkStatus();
-      
-      // Redirect based on subscription status
-      const subStatus = get(subscription);
-      if (subStatus.isPaid) {
-        goto('/dashboard');
-      } else {
-        goto('/pricing');
-      }
-    } catch (err) {
+
+    } catch (err: any) {
       console.error('Login error:', err);
       error = err.message || 'An error occurred during login. Please try again.';
     } finally {

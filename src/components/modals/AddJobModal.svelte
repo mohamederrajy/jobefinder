@@ -50,26 +50,28 @@
 
   onMount(() => {
     if (editorElement) {
-      editor = new Editor({
-        element: editorElement,
-        extensions: [
-          StarterKit.configure({
-            heading: {
-              levels: [1, 2, 3]
-            }
-          })
-        ],
-        content: '',
-        editorProps: {
-          attributes: {
-            class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-xl',
-            spellcheck: 'true',
+      setTimeout(() => {
+        editor = new Editor({
+          element: editorElement,
+          extensions: [
+            StarterKit.configure({
+              heading: {
+                levels: [1, 2, 3]
+              }
+            })
+          ],
+          content: '',
+          editorProps: {
+            attributes: {
+              class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-xl',
+              spellcheck: 'true',
+            },
           },
-        },
-        onUpdate: ({ editor }) => {
-          jobData.about = editor.getHTML();
-        }
-      });
+          onUpdate: ({ editor }) => {
+            jobData.about = editor.getHTML();
+          }
+        });
+      }, 100);
     }
   });
 
@@ -141,20 +143,27 @@
       loading = true;
       error = null;
 
+      if (!jobData.title || !jobData.company || !jobData.hourlyRate || !editor?.getHTML()) {
+        error = 'Please fill in all required fields';
+        return;
+      }
+
       const formData = new FormData();
       
       // Add job data
-      formData.append('jobData', JSON.stringify({
+      const jobPayload = {
         title: jobData.title,
         company: jobData.company,
-        hourlyRate: jobData.hourlyRate,
-        about: jobData.about,
+        hourlyRate: Number(jobData.hourlyRate),
+        about: editor?.getHTML() || '',
         jobUrl: jobData.jobUrl,
         contactDetails: jobData.contactDetails,
         address: jobData.address,
         tags: jobData.tags,
         isUrgent: jobData.isUrgent
-      }));
+      };
+
+      formData.append('jobData', JSON.stringify(jobPayload));
 
       // Add logo if exists
       if (logoFile) {
@@ -175,11 +184,12 @@
       });
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Failed to create job');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create job');
       }
 
-      dispatch('jobCreated');
+      const newJob = await response.json();
+      dispatch('jobCreated', newJob);
       dispatch('close');
     } catch (err) {
       console.error('Error creating job:', err);

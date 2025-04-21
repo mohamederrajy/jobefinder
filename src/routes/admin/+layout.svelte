@@ -3,16 +3,29 @@
   import { user } from '../../stores/userStore';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
+  import { PUBLIC_API_URL } from '$env/static/public';
 
   let isSidebarCollapsed = false;
   let successfulPayments = 0;
+  let isLoading = true;
+
+  async function checkAdminAccess() {
+    const userData = $user;
+    
+    if (!userData || !userData.isAdmin) {
+      goto('/login');
+      return false;
+    }
+    
+    return true;
+  }
 
   async function fetchTransactionsSummary() {
     try {
       const response = await fetch(`${PUBLIC_API_URL}/subscriptions/transactions`, {
         headers: {
           'Content-Type': 'application/json',
-          'x-auth-token': $user?.token || ''
+          'x-auth-token': $user?.token || localStorage.getItem('token') || ''
         }
       });
       const data = await response.json();
@@ -24,7 +37,13 @@
     }
   }
 
-  onMount(fetchTransactionsSummary);
+  onMount(async () => {
+    const hasAccess = await checkAdminAccess();
+    if (hasAccess) {
+      await fetchTransactionsSummary();
+    }
+    isLoading = false;
+  });
 
   const menuItems = [
     {
@@ -74,6 +93,9 @@
 
   async function handleLogout() {
     try {
+      // Clear local storage
+      localStorage.removeItem('token');
+      // Reset user store
       await user.logout();
       goto('/login');
     } catch (error) {
@@ -82,71 +104,78 @@
   }
 </script>
 
-<div class="admin-layout" class:collapsed={isSidebarCollapsed}>
-  <aside class="sidebar" class:collapsed={isSidebarCollapsed}>
-    <div class="sidebar-header">
-      <div class="logo">
-        <div class="logo-icon">
-          <svg viewBox="0 0 24 24" width="28" height="28">
-            <path fill="#6355FF" d="M20 6h-4V4c0-1.11-.89-2-2-2h-4c-1.11 0-2 .89-2 2v2H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-6 0h-4V4h4v2z"/>
-          </svg>
-        </div>
-        <span class="logo-text">JobFinder</span>
-        <button class="collapse-btn" on:click={() => isSidebarCollapsed = !isSidebarCollapsed}>
-          <svg viewBox="0 0 24 24" width="24" height="24">
-            <path fill="currentColor" d={isSidebarCollapsed ? 'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z' : 'M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z'}/>
-          </svg>
-        </button>
-      </div>
-    </div>
-
-    <nav class="sidebar-nav">
-      {#each menuItems as item}
-        <a 
-          href={item.href} 
-          class="nav-item"
-          class:active={$page.url.pathname === item.href}
-        >
-          <div class="nav-icon">
-            {@html item.icon}
-            {#if item.notifications > 0}
-              <span class="notification-badge">
-                {item.notifications}
-              </span>
-            {/if}
+{#if isLoading}
+  <div class="loading-screen">
+    <div class="spinner"></div>
+    <p>Loading...</p>
+  </div>
+{:else}
+  <div class="admin-layout" class:collapsed={isSidebarCollapsed}>
+    <aside class="sidebar" class:collapsed={isSidebarCollapsed}>
+      <div class="sidebar-header">
+        <div class="logo">
+          <div class="logo-icon">
+            <svg viewBox="0 0 24 24" width="28" height="28">
+              <path fill="#6355FF" d="M20 6h-4V4c0-1.11-.89-2-2-2h-4c-1.11 0-2 .89-2 2v2H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-6 0h-4V4h4v2z"/>
+            </svg>
           </div>
-          <span class="nav-label">{item.label}</span>
-          {#if isSidebarCollapsed}
-            <div class="tooltip">
-              {item.label}
+          <span class="logo-text">JobFinder</span>
+          <button class="collapse-btn" on:click={() => isSidebarCollapsed = !isSidebarCollapsed}>
+            <svg viewBox="0 0 24 24" width="24" height="24">
+              <path fill="currentColor" d={isSidebarCollapsed ? 'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z' : 'M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z'}/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        {#each menuItems as item}
+          <a 
+            href={item.href} 
+            class="nav-item"
+            class:active={$page.url.pathname === item.href}
+          >
+            <div class="nav-icon">
+              {@html item.icon}
               {#if item.notifications > 0}
-                ({item.notifications})
+                <span class="notification-badge">
+                  {item.notifications}
+                </span>
               {/if}
             </div>
+            <span class="nav-label">{item.label}</span>
+            {#if isSidebarCollapsed}
+              <div class="tooltip">
+                {item.label}
+                {#if item.notifications > 0}
+                  ({item.notifications})
+                {/if}
+              </div>
+            {/if}
+          </a>
+        {/each}
+      </nav>
+
+      <div class="sidebar-footer">
+        <button class="logout-button" on:click={handleLogout}>
+          <div class="nav-icon">
+            <svg viewBox="0 0 24 24" width="24" height="24">
+              <path fill="currentColor" d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+            </svg>
+          </div>
+          <span class="nav-label">Logout</span>
+          {#if isSidebarCollapsed}
+            <div class="tooltip">Logout</div>
           {/if}
-        </a>
-      {/each}
-    </nav>
+        </button>
+      </div>
+    </aside>
 
-    <div class="sidebar-footer">
-      <button class="logout-button" on:click={handleLogout}>
-        <div class="nav-icon">
-          <svg viewBox="0 0 24 24" width="24" height="24">
-            <path fill="currentColor" d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
-          </svg>
-        </div>
-        <span class="nav-label">Logout</span>
-        {#if isSidebarCollapsed}
-          <div class="tooltip">Logout</div>
-        {/if}
-      </button>
-    </div>
-  </aside>
-
-  <main class="main-content">
-    <slot />
-  </main>
-</div>
+    <main class="main-content">
+      <slot />
+    </main>
+  </div>
+{/if}
 
 <style>
   .admin-layout {
@@ -449,5 +478,33 @@
     .collapse-btn {
       display: none;
     }
+  }
+
+  .loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: white;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+  }
+
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #6355FF;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
   }
 </style> 
