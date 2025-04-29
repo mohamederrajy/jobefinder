@@ -145,19 +145,6 @@
           </svg>
           <span>Track your applications</span>
         </div>
-        <div class="benefit-item">
-          <svg viewBox="0 0 24 24" width="24" height="24">
-            <path fill="#4CAF50" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
-          </svg>
-          <span>Apply to these popular brands (and many more) with a single click:</span>
-        </div>
-      </div>
-
-      <div class="brand-logos">
-        <img src="/images/best_buy.svg" alt="Best Buy" />
-        <img src="/images/dunkin.svg" alt="Dunkin" />
-        <img src="/images/hilton.svg" alt="Hilton" />
-        <img src="/images/buffalo-wild-wings.svg" alt="Buffalo Wild Wings" />
       </div>
     </div>
 
@@ -324,17 +311,6 @@
     color: #333;
   }
 
-  .brand-logos {
-    display: flex;
-    align-items: center;
-    gap: 2.5rem;
-  }
-
-  .brand-logos img {
-    height: 32px;
-    object-fit: contain;
-  }
-
   .right-section {
     max-width: 480px;
   }
@@ -459,12 +435,6 @@
 
     h1 {
       font-size: 2.5rem;
-    }
-
-    .brand-logos {
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 2rem;
     }
   }
 

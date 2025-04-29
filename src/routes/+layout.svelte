@@ -30,8 +30,10 @@
 <div class="app-wrapper">
   <NotificationContainer />
   
-  <!-- Always show Navbar -->
-  <Navbar />
+  <!-- Show Navbar only for non-dashboard routes -->
+  {#if !$page.url.pathname.startsWith('/dashboard')}
+    <Navbar />
+  {/if}
 
   <!-- Main content -->
   <main class="main-content">

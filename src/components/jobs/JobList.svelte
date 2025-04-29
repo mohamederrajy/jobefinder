@@ -1145,14 +1145,14 @@
     display: inline-flex;
     align-items: center;
     gap: 2px;
-    background: white;
-    color: #111827;
+    background: linear-gradient(135deg, #10B981, #059669);
+    color: white;
     padding: 10px 20px;
     border-radius: 100px;
     font-weight: 600;
     font-size: 0.9375rem;
-    border: 1px solid #E5E7EB;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    border: 1px solid #059669;
+    box-shadow: 0 2px 4px rgba(5, 150, 105, 0.2);
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
@@ -1168,20 +1168,16 @@
     background: linear-gradient(
       90deg,
       transparent,
-      rgba(0, 0, 0, 0.05),
+      rgba(255, 255, 255, 0.2),
       transparent
     );
     transition: 0.5s;
   }
 
   .job-card:hover .rate-badge {
-    border-color: #D1D5DB;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+    border-color: #047857;
+    box-shadow: 0 4px 8px rgba(5, 150, 105, 0.3);
     transform: translateY(-1px);
-  }
-
-  .job-card:hover .rate-badge::before {
-    left: 100%;
   }
 
   .rate-badge .currency {
@@ -1626,15 +1622,15 @@
   }
   
   .blurred-job-card .rate-badge {
-    background: white;
-    border: 1px solid #E5E7EB;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-    color: #111827;
+    background: linear-gradient(135deg, #10B981, #059669);
+    color: white;
+    border: 1px solid #059669;
+    box-shadow: 0 2px 4px rgba(5, 150, 105, 0.2);
   }
   
   .blurred-job-card:hover .rate-badge {
-    border-color: #D1D5DB;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+    border-color: #047857;
+    box-shadow: 0 4px 8px rgba(5, 150, 105, 0.3);
   }
   
   .blurred-job-card .company-logo img {
@@ -1661,13 +1657,13 @@
   .center-upgrade-button-container {
     position: absolute;
     top: 50%;
-    left: 50%;
+    left: calc(25% + 250px); /* Significantly increased space from the left */
     transform: translate(-50%, -50%);
-    z-index: 100;
-    display: flex;
-    justify-content: center;
     width: 100%;
     pointer-events: none;
+    padding: 0 1rem;
+    max-width: 300px;
+    z-index: 10;
   }
   
   .center-upgrade-button {
@@ -1686,6 +1682,36 @@
     box-shadow: 0 8px 16px rgba(99, 85, 255, 0.3);
     transition: all 0.2s ease;
     white-space: nowrap;
+    width: 100%;
+    max-width: 300px;
+    justify-content: center;
+  }
+  
+  @media (max-width: 768px) {
+    .center-upgrade-button-container {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      top: auto;
+      transform: none;
+      margin: 0;
+      padding: 0;
+      max-width: none;
+      background: white;
+      box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
+    }
+    
+    .center-upgrade-button {
+      width: 100%;
+      max-width: none;
+      margin: 0;
+      height: 56px;
+      border-radius: 0;
+      padding: 0.75rem 1.5rem;
+      font-size: 0.9375rem;
+      box-shadow: none;
+    }
   }
   
   .center-upgrade-button:hover {
@@ -1762,26 +1788,21 @@
   .mobile-job-slider {
     width: 100%;
     position: relative;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  
+  .mobile-job-slider::-webkit-scrollbar {
+    display: none;
   }
   
   .slider-container {
     width: 100%;
-    transition: transform 0.3s ease;
-    touch-action: pan-x;
-  }
-  
-  .slider-slide {
-    width: 100%;
-    flex-shrink: 0;
-    transition: opacity 0.3s ease;
-  }
-  
-  .slider-slide.active {
-    display: block;
-  }
-  
-  .slider-slide:not(.active) {
-    display: none;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
   }
   
   .mobile-job-slider .job-card {
@@ -1812,6 +1833,8 @@
     
     .mobile-job-slider {
       display: block;
+      padding: 0;
+      height: calc(100vh - 120px); /* Adjust based on your header height */
     }
     
     .desktop-scroll-controls {
@@ -1821,14 +1844,9 @@
     .jobs-header .scroll-buttons {
       display: none !important;
     }
-
-    .slider-container {
-      -webkit-overflow-scrolling: touch;
-    }
     
-    .slider-arrow {
-      width: 44px;
-      height: 44px;
+    .slider-container {
+      padding: 0;
     }
     
     .job-card:active {
